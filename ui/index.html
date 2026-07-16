@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<title>Mail Uploader</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" width="19" height="19" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1.5" y="5" width="15" height="11" rx="2.2" fill="none" stroke="white" stroke-width="1.7" />
+          <path d="M2.2 6.3 9 11.6 15.8 6.3" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="18.4" cy="16.9" r="5.3" fill="#16314f" stroke="white" stroke-width="1.3" />
+          <path d="M16.2 17 17.9 18.7 20.9 15.3" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="brand-text">Mail Uploader<small>Multi-client Composer</small></div>
+    </div>
+
+    <div class="sidebar-search">
+      <span class="icon icon-search"></span>
+      <input type="text" id="nav-search" placeholder="ค้นหาหมวดหมู่" />
+    </div>
+
+    <div class="nav-item active" data-target="section-general" data-page="page-general">
+      <span class="icon icon-bell"></span>
+      <span>แจ้งเตือนทั่วไป</span>
+    </div>
+
+    <div class="nav-item" data-target="section-history" data-page="page-history">
+      <span class="icon icon-list"></span>
+      <span>ประวัติการส่ง</span>
+    </div>
+
+    <div class="nav-item" data-target="section-settings" data-page="page-settings">
+      <span class="icon icon-settings"></span>
+      <span>ตั้งค่า</span>
+    </div>
+
+    <div class="nav-item" data-target="section-fgstock" data-page="page-fgstock">
+      <span class="icon icon-refresh"></span>
+      <span>FG Stock Uploader</span>
+    </div>
+
+    <div class="nav-group-label">หมวดหมู่ (Category)</div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">
+        <span class="nav-group-dot"></span>
+        <span>Advice</span>
+      </div>
+      <div class="nav-item nav-sub" data-target="section-step1" data-page="page-advice">
+        <span class="icon icon-document"></span>
+        <span>ขอใบเสนอราคา</span>
+      </div>
+      <div class="nav-item nav-sub" data-target="section-step2" data-page="page-advice">
+        <span class="icon icon-document-check"></span>
+        <span>อนุมัติ + จัดส่ง</span>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">
+        <span class="nav-group-dot"></span>
+        <span>Outlook</span>
+      </div>
+      <div class="nav-item nav-sub" data-target="section-outlook-leave" data-page="page-outlook">
+        <span class="icon icon-clock"></span>
+        <span>แจ้งเลิกงาน</span>
+      </div>
+    </div>
+
+    <div id="custom-nav-container"></div>
+
+    <div class="nav-group-placeholder" id="add-category-btn" role="button" tabindex="0">
+      <span class="icon icon-plus"></span>
+      <span>เพิ่มหมวดหมู่ใหม่</span>
+    </div>
+
+    <div class="nav-spacer"></div>
+    <div class="nav-footnote">เวอร์ชันสำหรับต่อยอด<br />ฟังก์ชันในอนาคต<br /><a href="https://www.flaticon.com/uicons" target="_blank" style="color:inherit">Uicons by Flaticon</a></div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1><span class="icon icon-mail"></span>Mail Uploader</h1>
+        <p>เปิดร่างอีเมลใน Thunderbird อัตโนมัติ — ตรวจสอบก่อนกดส่งทุกครั้ง</p>
+      </div>
+      <div class="live-clock-wrap">
+        <span class="icon icon-clock"></span>
+        <span id="live-clock">--:--:--</span>
+      </div>
+    </div>
+
+    <div id="status-banner" class="status-banner">
+      <span id="status-icon-ok" class="icon icon-check"></span>
+      <span id="status-icon-error" class="icon icon-warning" style="display:none"></span>
+      <span id="status-text"></span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-icon">
+          <span class="icon icon-document"></span>
+        </div>
+        <div>
+          <div class="stat-label">ไฟล์ล่าสุด — ขั้น 1</div>
+          <div class="stat-value" id="stat-step1-file">กำลังโหลด...</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">
+          <span class="icon icon-document-check"></span>
+        </div>
+        <div>
+          <div class="stat-label">ไฟล์ล่าสุด — ขั้น 3</div>
+          <div class="stat-value" id="stat-step3-file">กำลังโหลด...</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">
+          <span class="icon icon-clock"></span>
+        </div>
+        <div>
+          <div class="stat-label">อัปเดตล่าสุด</div>
+          <div class="stat-value" id="stat-refresh-time">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-panel active" id="page-general">
+    <div class="card-grid">
+      <section class="card" id="section-general" style="grid-column: 1 / -1;">
+        <h2><span class="icon icon-bell"></span>แจ้งเตือนทั่วไป</h2>
+        <p class="card-desc">เขียนอีเมลอิสระ แล้วเปิดเป็นฉบับร่างใน Thunderbird</p>
+        <div class="field">
+          <label>ถึง (To)</label>
+          <div class="field-input-wrap">
+            <span class="icon icon-mail"></span>
+            <input type="text" id="general-to" />
+          </div>
+        </div>
+        <div class="field">
+          <label>สำเนา (CC)</label>
+          <div class="field-input-wrap">
+            <span class="icon icon-user"></span>
+            <input type="text" id="general-cc" />
+          </div>
+        </div>
+        <div class="field">
+          <label>หัวข้อ (Subject)</label>
+          <div class="field-input-wrap">
+            <span class="icon icon-document"></span>
+            <input type="text" id="general-subject" />
+          </div>
+        </div>
+        <div class="field">
+          <label>เนื้อหา (Body)</label>
+          <textarea id="general-body"></textarea>
+        </div>
+        <div class="attach-hint">
+          <span class="icon icon-paperclip"></span>
+          <span>รูปภาพเพิ่มเติม: <b id="image-general-name">ไม่มี</b></span>
+          <button type="button" class="link-btn" id="image-general-clear" onclick="clearImage('general')" style="display:none"><span class="icon icon-refresh"></span>เอาออก</button>
+        </div>
+        <button type="button" class="btn-secondary" onclick="pickImage('general')">
+          <span class="icon icon-folder"></span>
+          แนบรูปภาพเพิ่มเติม (ถ้าจำเป็น)
+        </button>
+        <button class="btn-primary" id="general-btn" onclick="sendGeneral()" title="กด Ctrl+Enter จากช่องไหนในการ์ดนี้ก็ส่งได้">
+          <span class="icon icon-send"></span>
+          เปิดใน Thunderbird
+        </button>
+      </section>
+    </div>
+    </div>
+
+    <div class="page-panel" id="page-advice">
+    <div class="vendor-block">
+      <div class="vendor-header">
+        <div class="vendor-badge">AD</div>
+        <div>
+          <h2>Advice</h2>
+          <p>งานใบเสนอราคาและการจัดส่งสินค้ากับ Advice Corporate</p>
+        </div>
+      </div>
+      <div class="card-grid">
+        <section class="card" id="section-step1">
+          <h2><span class="icon icon-document"></span>ขั้นตอนที่ 1</h2>
+          <p class="card-desc">ขอจัดทำใบเสนอราคา — แนบไฟล์ล่าสุดจากโฟลเดอร์ขั้น 1 อัตโนมัติ</p>
+          <div class="field">
+            <label>เลขที่ใบเสนอราคา (Quote No.)</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-document"></span>
+              <input type="text" id="step1-quote" placeholder="เว้นว่างให้ระบบลองอ่านจากชื่อไฟล์" />
+            </div>
+          </div>
+          <div class="attach-hint">
+            <span class="icon icon-paperclip"></span>
+            <span>จะแนบไฟล์: <b id="step1-file-name">กำลังโหลด...</b></span>
+            <button type="button" class="link-btn" id="step1-reset-btn" onclick="resetStep1File()" style="display:none"><span class="icon icon-refresh"></span>ใช้ไฟล์ล่าสุด</button>
+          </div>
+          <button type="button" class="btn-secondary" onclick="pickStep1File()">
+            <span class="icon icon-folder"></span>
+            เลือกไฟล์เอง (เฉพาะโฟลเดอร์ใบเสนอราคานี้)
+          </button>
+          <div class="attach-hint">
+            <span class="icon icon-paperclip"></span>
+            <span>รูปภาพเพิ่มเติม: <b id="image-step1-name">ไม่มี</b></span>
+            <button type="button" class="link-btn" id="image-step1-clear" onclick="clearImage('step1')" style="display:none"><span class="icon icon-refresh"></span>เอาออก</button>
+          </div>
+          <button type="button" class="btn-secondary" onclick="pickImage('step1')">
+            <span class="icon icon-folder"></span>
+            แนบรูปภาพเพิ่มเติม (ถ้าจำเป็น)
+          </button>
+          <button class="btn-primary" id="step1-btn" onclick="sendStep1()" title="กด Ctrl+Enter จากช่องไหนในการ์ดนี้ก็ส่งได้">
+            <span class="icon icon-send"></span>
+            เปิดใน Thunderbird
+          </button>
+        </section>
+
+        <section class="card" id="section-step2">
+          <h2><span class="icon icon-document-check"></span>ขั้นตอนที่ 2</h2>
+          <p class="card-desc">แจ้งอนุมัติ + ขอจัดส่งสินค้า — แนบไฟล์ล่าสุดจากโฟลเดอร์ขั้น 3 อัตโนมัติ</p>
+          <div class="field">
+            <label>เลขที่ PR&amp;QC</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-document-check"></span>
+              <input type="text" id="step2-po" placeholder="เว้นว่างให้ระบบลองอ่านจากชื่อไฟล์" />
+            </div>
+          </div>
+          <div class="attach-hint">
+            <span class="icon icon-paperclip"></span>
+            <span>จะแนบไฟล์: <b id="step2-file-name">กำลังโหลด...</b></span>
+            <button type="button" class="link-btn" id="step2-reset-btn" onclick="resetStep2File()" style="display:none"><span class="icon icon-refresh"></span>ใช้ไฟล์ล่าสุด</button>
+          </div>
+          <button type="button" class="btn-secondary" onclick="pickStep2File()">
+            <span class="icon icon-folder"></span>
+            เลือกไฟล์เอง (เฉพาะโฟลเดอร์ใบเสนอราคานี้)
+          </button>
+          <div class="attach-hint">
+            <span class="icon icon-paperclip"></span>
+            <span>รูปภาพเพิ่มเติม: <b id="image-step2-name">ไม่มี</b></span>
+            <button type="button" class="link-btn" id="image-step2-clear" onclick="clearImage('step2')" style="display:none"><span class="icon icon-refresh"></span>เอาออก</button>
+          </div>
+          <button type="button" class="btn-secondary" onclick="pickImage('step2')">
+            <span class="icon icon-folder"></span>
+            แนบรูปภาพเพิ่มเติม (ถ้าจำเป็น)
+          </button>
+          <button class="btn-primary" id="step2-btn" onclick="sendStep2()" title="กด Ctrl+Enter จากช่องไหนในการ์ดนี้ก็ส่งได้">
+            <span class="icon icon-send"></span>
+            เปิดใน Thunderbird
+          </button>
+        </section>
+      </div>
+    </div>
+    </div>
+
+    <div class="page-panel" id="page-outlook">
+    <div class="vendor-block">
+      <div class="vendor-header">
+        <div class="vendor-badge">OL</div>
+        <div>
+          <h2>Outlook</h2>
+          <p>อีเมลที่เปิดผ่าน Microsoft Outlook</p>
+        </div>
+      </div>
+      <div class="card-grid">
+        <section class="card" id="section-outlook-leave" style="grid-column: 1 / -1;">
+          <h2><span class="icon icon-clock"></span>แจ้งเลิกงาน</h2>
+          <p class="card-desc">แจ้งเตือนหน่วยงานที่เกี่ยวข้องตอนเลิกงาน แล้วเปิดเป็นฉบับร่างใน Outlook</p>
+          <div class="field">
+            <label>ถึง (To)<button type="button" class="field-action" onclick="openContactPicker('outlook-leave-to')"><span class="icon icon-user"></span>เลือกจาก Outlook</button></label>
+            <div class="field-input-wrap">
+              <span class="icon icon-mail"></span>
+              <input type="text" id="outlook-leave-to" />
+            </div>
+          </div>
+          <div class="field">
+            <label>สำเนา (CC)<button type="button" class="field-action" onclick="openContactPicker('outlook-leave-cc')"><span class="icon icon-user"></span>เลือกจาก Outlook</button></label>
+            <div class="field-input-wrap">
+              <span class="icon icon-user"></span>
+              <input type="text" id="outlook-leave-cc" />
+            </div>
+          </div>
+          <div class="field">
+            <label>หัวข้อ (Subject)</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-document"></span>
+              <input type="text" id="outlook-leave-subject" />
+            </div>
+          </div>
+          <div class="field">
+            <label>เนื้อหา (Body)</label>
+            <textarea id="outlook-leave-body"></textarea>
+          </div>
+          <div class="field">
+            <label class="schedule-toggle-label">
+              <input type="checkbox" id="outlook-leave-schedule-toggle" onchange="toggleOutlookLeaveSchedule()" />
+              <span class="icon icon-clock"></span>
+              ตั้งเวลาส่งอัตโนมัติ (คิวใน Outbox ของ Outlook)
+            </label>
+            <div class="field-input-wrap" id="outlook-leave-schedule-wrap" style="display:none; margin-top:8px;">
+              <span class="icon icon-clock"></span>
+              <input type="datetime-local" id="outlook-leave-schedule-time" />
+            </div>
+          </div>
+          <div class="attach-hint">
+            <span class="icon icon-paperclip"></span>
+            <span>รูปภาพเพิ่มเติม: <b id="image-outlook-leave-name">ไม่มี</b></span>
+            <button type="button" class="link-btn" id="image-outlook-leave-clear" onclick="clearImage('outlook-leave')" style="display:none"><span class="icon icon-refresh"></span>เอาออก</button>
+          </div>
+          <button type="button" class="btn-secondary" onclick="pickImage('outlook-leave')">
+            <span class="icon icon-folder"></span>
+            แนบรูปภาพเพิ่มเติม (ถ้าจำเป็น)
+          </button>
+          <button class="btn-primary" id="outlook-leave-btn" onclick="sendOutlookLeave()" title="กด Ctrl+Enter จากช่องไหนในการ์ดนี้ก็ส่งได้">
+            <span class="icon icon-send" id="outlook-leave-btn-icon"></span>
+            <span id="outlook-leave-btn-label">เปิดใน Outlook</span>
+          </button>
+        </section>
+      </div>
+    </div>
+    </div>
+
+    <div class="page-panel" id="page-history">
+    <div class="vendor-block">
+      <div class="card-grid">
+        <section class="card" id="section-history" style="grid-column: 1 / -1;">
+          <h2><span class="icon icon-list"></span>ประวัติการส่ง</h2>
+          <p class="card-desc">รายการอีเมลที่เปิดร่าง/ตั้งเวลาส่งล่าสุด 100 รายการ — กด "ส่งซ้ำ" เพื่อเปิดร่างใหม่ด้วยข้อมูลเดิม</p>
+
+          <div class="history-toolbar">
+            <div class="field-input-wrap history-search-wrap">
+              <span class="icon icon-search"></span>
+              <input type="text" id="history-search" placeholder="ค้นหาถึง/หัวข้อ" />
+            </div>
+            <select id="history-filter-category">
+              <option value="">ทุกหมวดหมู่</option>
+            </select>
+            <select id="history-filter-client">
+              <option value="">ทุกช่องทาง</option>
+              <option value="thunderbird">Thunderbird</option>
+              <option value="outlook">Outlook</option>
+            </select>
+            <input type="date" id="history-filter-from" title="ตั้งแต่วันที่" />
+            <input type="date" id="history-filter-to" title="ถึงวันที่" />
+            <button type="button" class="btn-secondary history-toolbar-btn" onclick="exportHistoryCsv()">
+              <span class="icon icon-document"></span>ส่งออก CSV
+            </button>
+            <button type="button" class="btn-secondary history-toolbar-btn danger" onclick="clearHistory()">
+              <span class="icon icon-trash"></span>ล้างประวัติทั้งหมด
+            </button>
+          </div>
+
+          <div class="history-table-wrap">
+            <table class="history-table" id="history-table">
+              <thead>
+                <tr>
+                  <th>เวลา</th>
+                  <th>หมวดหมู่</th>
+                  <th>ช่องทาง</th>
+                  <th>ถึง</th>
+                  <th>หัวข้อ</th>
+                  <th>สถานะ</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+    </div>
+
+    <div class="page-panel" id="page-settings">
+    <div class="vendor-block">
+      <div class="card-grid">
+        <section class="card" id="section-settings" style="grid-column: 1 / -1;">
+          <h2><span class="icon icon-settings"></span>ตั้งค่า</h2>
+          <p class="card-desc">สถานะระบบ คิวส่งอัตโนมัติ และข้อมูลแอปพลิเคชัน</p>
+
+          <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px">สถานะระบบ</h3>
+          <div id="env-status">กำลังตรวจสอบ...</div>
+
+          <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px">ตั้งค่า Advice</h3>
+          <p class="card-desc" style="margin-bottom:12px">ที่อยู่อีเมลเริ่มต้นและโฟลเดอร์ใบเสนอราคาหลักที่ใช้ในหมวดหมู่ Advice — แก้ได้โดยไม่ต้องแก้โค้ด</p>
+          <div class="field">
+            <label>ถึง (To) เริ่มต้น</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-mail"></span>
+              <input type="text" id="advice-cfg-to" />
+            </div>
+          </div>
+          <div class="field">
+            <label>สำเนา (CC) เริ่มต้น</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-user"></span>
+              <input type="text" id="advice-cfg-cc" />
+            </div>
+          </div>
+          <div class="field">
+            <label>โฟลเดอร์ใบเสนอราคาหลัก</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-folder"></span>
+              <input type="text" id="advice-cfg-root" readonly />
+            </div>
+          </div>
+          <button type="button" class="btn-secondary" onclick="pickAdviceRootFolder()">
+            <span class="icon icon-folder"></span>เลือกโฟลเดอร์
+          </button>
+          <button type="button" class="btn-primary" id="advice-cfg-save-btn" onclick="saveAdviceConfig()" style="margin-bottom:18px">
+            <span class="icon icon-check"></span>บันทึกการตั้งค่า Advice
+          </button>
+
+          <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px">ลายเซ็นดิจิทัล</h3>
+          <p class="card-desc" style="margin-bottom:12px">แนบท้ายอีเมลที่ส่งจากแอปนี้อัตโนมัติทั้ง Thunderbird และ Outlook — ตั้งเป็นข้อมูลของคุณเอง (ใครใช้เครื่องไหนก็ตั้งของตัวเองได้ ไม่ผูกกับคนใดคนหนึ่ง)</p>
+          <div class="field">
+            <label>ชื่อ-นามสกุล</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-user"></span>
+              <input type="text" id="sig-cfg-name" placeholder="เช่น Purinat Lexuthai" />
+            </div>
+          </div>
+          <div class="field">
+            <label>ตำแหน่ง</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-document"></span>
+              <input type="text" id="sig-cfg-position" placeholder="เช่น IT SUPPORT STAFF" />
+            </div>
+          </div>
+          <div class="field">
+            <label>อีเมล</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-mail"></span>
+              <input type="text" id="sig-cfg-email" placeholder="เช่น isdpt5@vsth.lan" />
+            </div>
+          </div>
+          <div class="field">
+            <label>IT Call</label>
+            <div class="field-input-wrap">
+              <span class="icon icon-clock"></span>
+              <input type="text" id="sig-cfg-it-call" placeholder="เช่น 123" />
+            </div>
+          </div>
+          <button type="button" class="btn-primary" id="sig-cfg-save-btn" onclick="saveSignatureConfig()" style="margin-bottom:12px">
+            <span class="icon icon-check"></span>บันทึกลายเซ็น
+          </button>
+          <div class="card-desc" style="margin-bottom:6px">ตัวอย่าง:</div>
+          <div id="sig-preview" style="background:var(--bg);border-radius:var(--radius-md);padding:12px;margin-bottom:18px"></div>
+
+          <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px">คิวส่งอัตโนมัติ (Outlook)</h3>
+          <div id="queue-list"></div>
+
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label"><span class="icon icon-moon"></span>โหมดกลางคืน (Dark mode)</div>
+              <div class="settings-row-desc">ปรับธีมแอปให้เข้ากับการใช้งานตอนกลางคืน</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label"><span class="icon icon-power"></span>เริ่มแอปอัตโนมัติเมื่อเปิดเครื่อง</div>
+              <div class="settings-row-desc">เพิ่ม/ลบ shortcut ในโฟลเดอร์ Startup ของ Windows</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="autostart-toggle" onchange="toggleAutostart()" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label"><span class="icon icon-refresh"></span>ระบบทำงานเบื้องหลัง</div>
+              <div class="settings-row-desc">ปิดหน้าต่างแล้วแอปยังทำงานอยู่ใน system tray (มุมขวาล่าง) + ตั้ง Windows Scheduled Task ตรวจคิวส่งอัตโนมัติทุก 15 นาที แม้ปิดแอปไปแล้วก็ยังปลุก Outlook ให้ส่งได้ตรงเวลา</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="background-task-toggle" onchange="toggleBackgroundTask()" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label"><span class="icon icon-mail"></span>Reply จริงสำหรับขั้นตอนที่ 2 (Advice)</div>
+              <div class="settings-row-desc">ให้ขั้นตอนที่ 2 เปิดเป็น Reply บนอีเมล QC เดิมจริงๆ แทนฉบับร่างใหม่ — ต้องติดตั้งส่วนขยาย Thunderbird เองอีกขั้นตอน (ดูวิธีใน SKILL.md) สลับสวิตช์นี้แค่ลงทะเบียนฝั่งแอป ยังไม่ครบขั้นตอนติดตั้งทั้งหมด</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="reply-bridge-toggle" onchange="toggleReplyBridge()" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px"><span class="icon icon-info" style="width:12px;height:12px;margin-right:4px;vertical-align:-1px"></span>เกี่ยวกับแอปนี้</h3>
+          <div class="about-grid" id="about-grid"></div>
+        </section>
+      </div>
+    </div>
+    </div>
+
+    <div class="page-panel" id="page-fgstock">
+    <div class="vendor-block">
+      <div class="card-grid">
+        <section class="card" id="section-fgstock" style="grid-column: 1 / -1;">
+          <h2><span class="icon icon-refresh"></span>FG Stock Uploader</h2>
+          <p class="card-desc">สถานะเครื่องมือดึงข้อมูลสต็อกสินค้าสำเร็จรูปอัตโนมัติ (Auto FG Stock Importer) — ทำงานแยกจาก Mail Uploader เป็นเครื่องมือของตัวเอง หน้านี้ใช้ดูสถานะและสั่งรันด้วยมือได้เท่านั้น</p>
+
+          <div id="fgstock-not-installed" style="display:none">
+            <div class="empty-state">
+              <span class="icon icon-warning empty-state-icon"></span>
+              <p>ไม่พบโปรแกรม Auto FG Stock Importer ในเครื่องนี้</p>
+            </div>
+          </div>
+
+          <div id="fgstock-content">
+            <div class="stat-row" style="margin:0 0 18px">
+              <div class="stat-card">
+                <div class="stat-icon">
+                  <span class="icon icon-check"></span>
+                </div>
+                <div>
+                  <div class="stat-label">export วันนี้</div>
+                  <div class="stat-value" id="fgstock-today-status">กำลังโหลด...</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon">
+                  <span class="icon icon-clock"></span>
+                </div>
+                <div>
+                  <div class="stat-label">รันครั้งถัดไป</div>
+                  <div class="stat-value" id="fgstock-next-run">กำลังโหลด...</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon">
+                  <span class="icon icon-document"></span>
+                </div>
+                <div>
+                  <div class="stat-label">export สำเร็จล่าสุด</div>
+                  <div class="stat-value" id="fgstock-last-success">กำลังโหลด...</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label"><span class="icon icon-clock"></span>Scheduled Task (ทุกวันจันทร์-เสาร์ 08:00 น.)</div>
+                <div class="settings-row-desc" id="fgstock-task-desc">กำลังตรวจสอบ...</div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label"><span class="icon icon-power"></span>รันอัตโนมัติตอนล็อกอินเข้าเครื่อง</div>
+                <div class="settings-row-desc" id="fgstock-startup-desc">กำลังตรวจสอบ...</div>
+              </div>
+            </div>
+
+            <button type="button" class="btn-primary" id="fgstock-run-btn" onclick="runFgStockNow()" style="margin-top:16px">
+              <span class="icon icon-refresh"></span>
+              รันดึงข้อมูลเดี๋ยวนี้
+            </button>
+
+            <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px">บันทึกการทำงานล่าสุด</h3>
+            <div class="log-box" id="fgstock-log"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+    </div>
+
+    <div id="custom-content-container"></div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="add-category-overlay">
+  <div class="modal">
+    <h3><span class="icon icon-plus" id="add-cat-modal-icon"></span><span id="add-cat-modal-title">เพิ่มหมวดหมู่ใหม่</span></h3>
+    <p class="card-desc" id="add-cat-modal-desc">สร้างหมวดหมู่สำหรับงานส่งเมลรูปแบบใหม่ พร้อมช่องกรอกอิสระ</p>
+    <input type="hidden" id="edit-cat-id" value="" />
+
+    <div class="field">
+      <label>ชื่อหมวดหมู่</label>
+      <input type="text" id="new-cat-name" placeholder="เช่น Synnex, JIB" />
+    </div>
+    <div class="field">
+      <label>ตัวย่อป้าย (ไม่เกิน 3 ตัวอักษร)</label>
+      <input type="text" id="new-cat-badge" maxlength="3" placeholder="เช่น SX" />
+    </div>
+    <div class="field">
+      <label>คำอธิบายสั้น ๆ</label>
+      <input type="text" id="new-cat-desc" placeholder="เช่น งานสั่งซื้อกับ Synnex" />
+    </div>
+    <div class="field">
+      <label><span class="icon icon-settings" style="width:11px;height:11px;margin-right:4px;vertical-align:-1px"></span>เปิดร่างด้วย</label>
+      <select id="new-cat-client">
+        <option value="thunderbird">Thunderbird</option>
+        <option value="outlook">Outlook</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>ถึง (To) เริ่มต้น</label>
+      <div class="field-input-wrap">
+        <span class="icon icon-mail"></span>
+        <input type="text" id="new-cat-to" />
+      </div>
+    </div>
+    <div class="field">
+      <label>สำเนา (CC) เริ่มต้น</label>
+      <div class="field-input-wrap">
+        <span class="icon icon-user"></span>
+        <input type="text" id="new-cat-cc" />
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" style="margin-bottom:0" onclick="closeAddCategoryModal()">ยกเลิก</button>
+      <button type="button" class="btn-primary" id="add-cat-submit-btn" onclick="submitAddCategory()">
+        <span class="icon icon-plus"></span>
+        เพิ่มหมวดหมู่
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="contact-picker-overlay">
+  <div class="modal">
+    <h3><span class="icon icon-user"></span>เลือกจากสมุดที่อยู่ Outlook</h3>
+    <p class="card-desc" id="contact-picker-status">กำลังโหลดรายชื่อ...</p>
+
+    <div class="field">
+      <div class="field-input-wrap">
+        <span class="icon icon-search"></span>
+        <input type="text" id="contact-search" placeholder="ค้นหาชื่อหรืออีเมล" />
+      </div>
+    </div>
+
+    <div class="contact-select-all-row">
+      <label class="contact-select-all-label">
+        <input type="checkbox" id="contact-select-all" onchange="toggleSelectAllContacts()" />
+        <span id="contact-select-all-label-text">เลือกทั้งหมด</span>
+      </label>
+      <span class="contact-selected-count" id="contact-selected-count"></span>
+    </div>
+
+    <div class="contact-list" id="contact-list"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" style="margin-bottom:0" onclick="closeContactPicker()">ปิด</button>
+      <button type="button" class="btn-primary" onclick="applyContactSelection()">
+        <span class="icon icon-check"></span>
+        เพิ่มผู้รับที่เลือก
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

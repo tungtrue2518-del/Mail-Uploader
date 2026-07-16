@@ -1,0 +1,23 @@
+# Runtime config/data — real recipient addresses, signature info, per-machine
+# settings, and sent-mail history. Never commit these.
+config.json
+categories.json
+send_log.json
+send_log.json.bak
+scheduled_sends.json
+reply_jobs/
+reply_bridge_host_manifest.json
+run_reply_bridge_host.bat
+run_log.txt
+
+# Build artifacts (regenerate with the PyInstaller command in SKILL.md)
+dist/
+build/
+__pycache__/
+*.pyc
+
+# Local Claude Code session settings
+.claude/settings.local.json
+
+# Legacy Tkinter version, superseded — keep locally for reference, not history
+mail_sender.py

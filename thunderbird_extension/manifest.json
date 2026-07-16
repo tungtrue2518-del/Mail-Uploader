@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+  "name": "Mail Uploader Reply Bridge",
+  "version": "1.0.0",
+  "description": "เชื่อมแอป Mail Uploader กับ Thunderbird ให้เปิด Reply จริงบน thread เดิมได้ (แทนการเปิดฉบับร่างใหม่)",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "reply-bridge@vel-suede.local",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "compose",
+    "messagesRead",
+    "accountsRead",
+    "nativeMessaging"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  }
+}
