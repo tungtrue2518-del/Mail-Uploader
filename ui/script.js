@@ -251,6 +251,11 @@ async function loadFgStockStatus() {
   }
 }
 
+async function openFgStockFolder() {
+  const result = await window.pywebview.api.open_fg_stock_folder();
+  showStatus(result.ok, result.message);
+}
+
 async function runFgStockNow() {
   const btn = document.getElementById("fgstock-run-btn");
   btn.disabled = true;

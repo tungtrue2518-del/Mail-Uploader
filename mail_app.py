@@ -206,11 +206,32 @@ FG_STOCK_DIR = r"C:\Users\IT-5\Desktop\Auto FG Stock Importer"
 FG_STOCK_LOG_FILE = os.path.join(FG_STOCK_DIR, "run_log.txt")
 FG_STOCK_LAST_SUCCESS_FILE = os.path.join(FG_STOCK_DIR, "last_success.txt")
 FG_STOCK_LAUNCHER = os.path.join(FG_STOCK_DIR, "run_export.bat")
+FG_STOCK_CONFIG_FILE = os.path.join(FG_STOCK_DIR, "config.json")
 FG_STOCK_TASK_NAME = "Auto FG Stock Importer"
 FG_STOCK_STARTUP_SHORTCUT = os.path.join(
     os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs", "Startup",
     "Auto FG Stock Importer.lnk",
 )
+# Must stay identical to MONTH_FOLDER in auto_fg_stock.py — duplicated here
+# rather than imported since the two tools are deliberately independent
+# (see the block comment above).
+FG_STOCK_MONTH_FOLDER = [
+    "", "01-Jan", "02-Feb", "03-Mar", "04-April", "05-May", "06-Jun",
+    "07-Jul", "08-Aug", "09-Sep", "10-Oct", "11-Nov", "12-Dec",
+]
+
+
+def fg_stock_today_folder() -> str | None:
+    if not os.path.isfile(FG_STOCK_CONFIG_FILE):
+        return None
+    try:
+        with open(FG_STOCK_CONFIG_FILE, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        dest_root = cfg["dest_root"]
+    except Exception:
+        return None
+    today = datetime.date.today()
+    return os.path.join(dest_root, str(today.year), FG_STOCK_MONTH_FOLDER[today.month])
 
 
 def fg_stock_task_info() -> dict:
@@ -268,12 +289,32 @@ def next_business_day(d: datetime.date) -> datetime.date:
     return n
 
 
+def default_standby_subject() -> str:
+    return f"แจ้งเรื่องการ Standby เจ้าหน้าที่ IT {thai_date(datetime.date.today())}"
+
+
+def standby_cutoff_time(now: datetime.datetime | None = None) -> datetime.datetime:
+    """The Standby cutoff is always a half-hour mark (17:00, 17:30, 18:00, ...),
+    rounded up to the next half-hour from the current time — but never earlier
+    than 17:00, since standby coverage starts at end of the normal workday.
+    e.g. sent at 17:05 -> 17:30 cutoff; sent at 17:30 exactly -> stays 17:30;
+    sent at 18:31 -> 19:00 cutoff; sent at 15:00 -> stays at the 17:00 floor."""
+    now = now or datetime.datetime.now()
+    floor = now.replace(hour=17, minute=0, second=0, microsecond=0)
+    if now <= floor:
+        return floor
+    steps_of_30min = -(-int((now - floor).total_seconds() // 60) // 30)  # ceil division
+    return floor + datetime.timedelta(minutes=30 * steps_of_30min)
+
+
 def default_general_body() -> str:
     today = datetime.date.today()
     tomorrow = next_business_day(today)
+    cutoff = standby_cutoff_time()
+    cutoff_display = cutoff.strftime("%H:%M")
     return (
         "เรียน ทุกหน่วยงานที่เกี่ยวข้อง\n\n"
-        "เนื่องจากเจ้าหน้าที่ IT มีภารกิจส่วนตัว จึงไม่สามารถอยู่ Standby หลังช่วงเวลา 17:30 น. "
+        f"เนื่องจากเจ้าหน้าที่ IT มีภารกิจส่วนตัว จึงไม่สามารถอยู่ Standby หลังช่วงเวลา {cutoff_display} น. "
         f"ของวันนี้ ({thai_date(today)}) ได้ ดังนั้น สำหรับพื้นที่การทำงานที่มีการเปิด OT จนถึงเวลา 21:00 น. "
         "หากพบปัญหาในการใช้งานอุปกรณ์คอมพิวเตอร์, Server หรือ Printer ท่านสามารถเขียนโน้ตแจ้งเรื่องไว้ที่โต๊ะแผนก IT ได้ทันทีครับ "
         f"เจ้าหน้าที่จะรีบเข้าดำเนินการแก้ไขให้ใน ({thai_date(tomorrow)})\n\n"
@@ -780,7 +821,7 @@ class Api:
             "general_body": default_general_body(),
             "step1_file": os.path.basename(step1_file) if step1_file else "ไม่พบไฟล์ PDF",
             "step3_file": os.path.basename(step3_file) if step3_file else "ไม่พบไฟล์ PDF",
-            "outlook_leave_subject": "แจ้งเตือนการดูแลระบบ IT",
+            "outlook_leave_subject": default_standby_subject(),
             "outlook_leave_body": default_general_body(),
         }
 
@@ -1233,6 +1274,18 @@ class Api:
             return {"ok": False, "message": "รันนานเกินไป (เกิน 90 วินาที) — เครือข่ายหรือฐานข้อมูลอาจช้าหรือไม่ตอบสนอง"}
         except Exception as exc:
             return {"ok": False, "message": f"รันไม่สำเร็จ: {exc}"}
+
+    def open_fg_stock_folder(self):
+        folder = fg_stock_today_folder()
+        if not folder:
+            return {"ok": False, "message": "ไม่พบการตั้งค่าโฟลเดอร์ปลายทางของ Auto FG Stock Importer"}
+        if not os.path.isdir(folder):
+            return {"ok": False, "message": f"ยังไม่มีโฟลเดอร์ของเดือนนี้ (ยังไม่เคย export): {folder}"}
+        try:
+            os.startfile(folder)
+            return {"ok": True, "message": "เปิดโฟลเดอร์แล้ว"}
+        except Exception as exc:
+            return {"ok": False, "message": f"เปิดโฟลเดอร์ไม่สำเร็จ: {exc}"}
 
     def get_advice_config(self):
         return load_config()
