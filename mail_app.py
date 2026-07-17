@@ -171,15 +171,23 @@ MONTH_ABBR = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
 
 
 def archive_pr_po_file(file_path: str, po_no: str) -> dict:
-    """After step 2 (อนุมัติ+จัดส่ง) is sent, move the PDF out of the working
-    folder into the shared PR&PO archive, organized by Buddhist year / month
-    abbreviation, and rename it to just the PO number. Never raises — callers
-    treat archiving as best-effort so a network hiccup doesn't undo an
-    already-sent email."""
+    """After step 2 (อนุมัติ+จัดส่ง) opens a draft, COPY the PDF into the
+    shared PR&PO archive, organized by Buddhist year / month abbreviation,
+    renamed to just the PO number. Never raises — callers treat archiving as
+    best-effort so a network hiccup doesn't undo an already-sent email.
+
+    Was originally a MOVE, but that broke the still-open Thunderbird draft:
+    this runs ~2s after the draft opens (see open_step2), not after the user
+    actually clicks Send, so moving the file out from under the draft made
+    the attachment un-previewable ("File not found") if the user checked it
+    before sending — confirmed live when a real file had already been
+    relocated to the archive while its compose window was still open.
+    Copying leaves the original in the working folder for as long as the
+    user needs it; nothing auto-cleans that folder anymore."""
     if not po_no:
-        return {"ok": False, "message": "ไม่ได้ย้ายไฟล์เข้า PR&PO เพราะไม่พบเลข PR&QC สำหรับตั้งชื่อไฟล์"}
+        return {"ok": False, "message": "ไม่ได้คัดลอกไฟล์เข้า PR&PO เพราะไม่พบเลข PR&QC สำหรับตั้งชื่อไฟล์"}
     if not file_path or not os.path.isfile(file_path):
-        return {"ok": False, "message": "ไม่ได้ย้ายไฟล์เข้า PR&PO เพราะไม่พบไฟล์ต้นทาง"}
+        return {"ok": False, "message": "ไม่ได้คัดลอกไฟล์เข้า PR&PO เพราะไม่พบไฟล์ต้นทาง"}
 
     today = datetime.date.today()
     buddhist_year = str(today.year + 543)
@@ -190,10 +198,10 @@ def archive_pr_po_file(file_path: str, po_no: str) -> dict:
 
     try:
         os.makedirs(dest_dir, exist_ok=True)
-        shutil.move(file_path, dest_path)
-        return {"ok": True, "message": f"ย้ายไฟล์เข้า PR&PO แล้ว: {buddhist_year}\\{month_folder}\\{po_no}{ext}"}
+        shutil.copy2(file_path, dest_path)
+        return {"ok": True, "message": f"คัดลอกไฟล์เข้า PR&PO แล้ว: {buddhist_year}\\{month_folder}\\{po_no}{ext}"}
     except Exception as exc:
-        return {"ok": False, "message": f"ส่งอีเมลสำเร็จ แต่ย้ายไฟล์เข้า PR&PO ไม่สำเร็จ: {exc}"}
+        return {"ok": False, "message": f"ส่งอีเมลสำเร็จ แต่คัดลอกไฟล์เข้า PR&PO ไม่สำเร็จ: {exc}"}
 
 # ---------------------------------------------------------------------------
 # FG Stock Uploader status tab: this is a SEPARATE standalone tool (its own
@@ -1006,9 +1014,9 @@ class Api:
         result["file_name"] = os.path.basename(file_path)
 
         if result.get("ok"):
-            # give Thunderbird a moment to actually read the attachment off disk
-            # before we move the file out from under it (matters most on a cold start)
-            time.sleep(2)
+            # Copying (not moving — see archive_pr_po_file's docstring), so
+            # there's no race with Thunderbird still reading the original
+            # for the attachment; no artificial delay needed here anymore.
             archive_result = archive_pr_po_file(file_path, po_no)
             result["archive_ok"] = archive_result["ok"]
             result["message"] = result["message"] + " " + archive_result["message"]
