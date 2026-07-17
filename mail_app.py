@@ -1051,15 +1051,19 @@ class Api:
                 # Only switch Thunderbird into HTML compose mode when a
                 # signature is actually configured — keeps the plain-text
                 # path (the well-tested default) completely untouched
-                # otherwise. Explicit <html><body> wrapper + margin-reset
-                # <style>: without it, Thunderbird's compose editor
-                # auto-wraps every line in its own default-margin <p>,
-                # rendering as one huge gap per line instead of normal
-                # paragraph spacing.
+                # otherwise.
+                # IMPORTANT: -compose's body='...' value must be an HTML
+                # FRAGMENT, not a full <html><head>...</head><body> document
+                # — wrapping it in a full document made Thunderbird's
+                # -compose parser drop the entire body silently (confirmed:
+                # a real send came through completely empty). Font/size
+                # comes from a wrapping <div>, and per-paragraph <p
+                # style="margin:0 0 10px"> (see text_body_to_html) fixes the
+                # original huge-gap-per-line issue without needing a <style>
+                # block or document tags.
                 body_html = (
-                    "<html><head><style>p{margin:0 0 10px 0;}</style></head>"
-                    "<body style=\"font-family:'Leelawadee UI','Segoe UI',Tahoma,Arial,sans-serif;font-size:13px;\">"
-                    + text_body_to_html(body) + sig_html + "</body></html>"
+                    "<div style=\"font-family:'Leelawadee UI','Segoe UI',Tahoma,Arial,sans-serif;font-size:13px;\">"
+                    + text_body_to_html(body) + sig_html + "</div>"
                 )
                 fields.append("format='html'")
                 fields.append(f"body='{escape_field(body_html)}'")
