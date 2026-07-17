@@ -1030,17 +1030,14 @@ class Api:
             if cc_addr:
                 fields.append(f"cc='{escape_field(cc_addr)}'")
             fields.append(f"subject='{escape_field(subject)}'")
-            sig_html = build_signature_html()
-            if sig_html:
-                # Only switch Thunderbird into HTML compose mode when a
-                # signature is actually configured — keeps the plain-text
-                # path (the well-tested default) completely untouched
-                # otherwise.
-                body_html = html.escape(body).replace("\n", "<br>\n") + "<br><br>" + sig_html
-                fields.append("format='html'")
-                fields.append(f"body='{escape_field(body_html)}'")
-            else:
-                fields.append(f"body='{escape_field(body)}'")
+            # Always plain text for Thunderbird's -compose. An HTML body
+            # (tried to inject the digital-signature card here) reliably
+            # broke in real testing: Thunderbird's compose editor either
+            # dropped the content entirely or re-wrapped every line in its
+            # own default-margin <p>, giving huge gaps between every single
+            # line no matter how the HTML was structured. Plain text has
+            # neither problem and renders \n / \n\n exactly as written.
+            fields.append(f"body='{escape_field(body)}'")
             if all_attachments:
                 # Thunderbird's -compose accepts a comma-separated list of file:// URIs
                 # in a single attachment='...' value.
