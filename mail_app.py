@@ -129,6 +129,23 @@ def signature_config() -> dict:
     }
 
 
+def text_body_to_html(body: str, paragraph_gap_px: int = 10) -> str:
+    """Converts plain body text to HTML for mail-client rich compose.
+    Splits on blank lines into explicit <p style="margin:0 0 Npx"> blocks
+    (single \\n inside a paragraph becomes <br>). Explicit margin-0 <p> tags
+    are used instead of bare text+<br> because Thunderbird's Gecko compose
+    editor auto-wraps unstructured content in its own <p> using the browser
+    default stylesheet (~1em top/bottom margin) once it loads the body —
+    that showed up as every single line rendering with huge blank gaps
+    between them, not just between real paragraphs."""
+    paragraphs = body.split("\n\n")
+    parts = []
+    for para in paragraphs:
+        inner = html.escape(para).replace("\n", "<br>\n")
+        parts.append(f'<p style="margin:0 0 {paragraph_gap_px}px 0;">{inner}</p>')
+    return "".join(parts)
+
+
 def build_signature_html(cfg: dict | None = None) -> str:
     """Renders the little name-card signature (bold name / blue role /
     "Email:" + bold link / boxed "IT Call" number) the user asked to match
@@ -790,10 +807,10 @@ def apply_body_keeping_signature(mail, body: str) -> None:
     """
     own_signature_html = build_signature_html()
     if own_signature_html:
-        body_html = html.escape(body).replace("\n", "<br>\n")
         mail.HTMLBody = (
-            "<html><body style=\"font-family:'Leelawadee UI','Segoe UI',Tahoma,Arial,sans-serif;font-size:13px;\">"
-            + body_html + "<br><br>" + own_signature_html + "</body></html>"
+            "<html><head><style>p{margin:0 0 10px 0;}</style></head>"
+            "<body style=\"font-family:'Leelawadee UI','Segoe UI',Tahoma,Arial,sans-serif;font-size:13px;\">"
+            + text_body_to_html(body) + own_signature_html + "</body></html>"
         )
         return
 
@@ -802,9 +819,8 @@ def apply_body_keeping_signature(mail, body: str) -> None:
         existing_html = mail.HTMLBody or ""
         match = re.search(r"<body[^>]*>", existing_html, re.IGNORECASE)
         if match:
-            body_html = html.escape(body).replace("\n", "<br>\n")
             insert_at = match.end()
-            mail.HTMLBody = existing_html[:insert_at] + body_html + "<br><br>" + existing_html[insert_at:]
+            mail.HTMLBody = existing_html[:insert_at] + text_body_to_html(body) + existing_html[insert_at:]
             return
     except Exception:
         pass
@@ -1035,8 +1051,16 @@ class Api:
                 # Only switch Thunderbird into HTML compose mode when a
                 # signature is actually configured — keeps the plain-text
                 # path (the well-tested default) completely untouched
-                # otherwise.
-                body_html = html.escape(body).replace("\n", "<br>\n") + "<br><br>" + sig_html
+                # otherwise. Explicit <html><body> wrapper + margin-reset
+                # <style>: without it, Thunderbird's compose editor
+                # auto-wraps every line in its own default-margin <p>,
+                # rendering as one huge gap per line instead of normal
+                # paragraph spacing.
+                body_html = (
+                    "<html><head><style>p{margin:0 0 10px 0;}</style></head>"
+                    "<body style=\"font-family:'Leelawadee UI','Segoe UI',Tahoma,Arial,sans-serif;font-size:13px;\">"
+                    + text_body_to_html(body) + sig_html + "</body></html>"
+                )
                 fields.append("format='html'")
                 fields.append(f"body='{escape_field(body_html)}'")
             else:
