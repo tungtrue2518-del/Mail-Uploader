@@ -1,4 +1,4 @@
-// Mail Uploader Reply Bridge — background script
+// OverAll Uploader Reply Bridge — background script
 // Keeps a persistent native-messaging connection to the Python app's
 // "reply bridge host" (mail_app.py --reply-bridge-host, launched by
 // Thunderbird itself the first time this connects). Jobs arrive over that

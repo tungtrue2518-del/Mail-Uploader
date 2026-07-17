@@ -29,7 +29,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Mail Uploader',
+    name='OverAll Uploader',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

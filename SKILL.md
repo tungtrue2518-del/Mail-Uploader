@@ -1,9 +1,11 @@
 ---
 name: mail-advice-composer
-description: Multi-client email composer app ("Mail Uploader") for Vel-Suede IT — pywebview desktop app that opens pre-filled drafts in Thunderbird/Outlook. Read this before making any changes in this folder.
+description: Multi-client email composer app ("OverAll Uploader", formerly "Mail Uploader") for Vel-Suede IT — pywebview desktop app that opens pre-filled drafts in Thunderbird/Outlook. Read this before making any changes in this folder.
 ---
 
-# Mail Uploader (Multi-client Composer)
+# OverAll Uploader (Multi-client Composer)
+
+**Renamed from "Mail Uploader" to "OverAll Uploader" (Round 17)** — the project folder, `mail_app.py` module name, and this skill's internal `name:` slug (`mail-advice-composer`) were deliberately left unchanged (renaming those would be much higher-risk churn for a cosmetic product-name change); only user-visible strings and the exe/shortcut/task names were updated. See Round 17 below for the exact list.
 
 Desktop app for Vel-Suede (Thailand) IT (user: "Tung", real name ภูริณัฐ เล็กอุทัย, 085-371-6799). Built with **pywebview** (Python backend + HTML/CSS/JS frontend), replacing an earlier Tkinter version.
 
@@ -217,6 +219,26 @@ User asked for a new tab in Mail Uploader to monitor a completely different, pre
 - Frontend: `loadFgStockStatus()` (called on load + every 60s) and `runFgStockNow()` in `script.js`, new `page-fgstock` panel + sidebar nav item ("FG Stock Uploader", `icon-refresh`) in `index.html`, `.log-box`/`.empty-state` styles in `style.css`.
 - **If the other tool's folder is ever moved/renamed, update the `FG_STOCK_*` constants at the top of this block in `mail_app.py` to match** — nothing here re-derives that path automatically.
 - Verified end-to-end for real (not mocked): ran `Api.get_fg_stock_status()`'s underlying logic and a manual `run_fg_stock_now()` against the actual tool on this machine before shipping — this is a case where real verification was possible (unlike the Thunderbird-extension features) since both tools run locally on the same Windows box.
+
+## Round 17: renamed "Mail Uploader" → "OverAll Uploader"
+
+Product name change only — no behavior/feature changes. Everywhere the OLD name appears below in Rounds 1–16 is historical and describes what was true at the time; this section is the current source of truth for the app's name-derived identifiers.
+
+**What changed** (user-visible strings + OS-level identifiers, all updated together in one pass):
+- `mail_app.py`: window title (`webview.create_window` first arg), tray icon tooltip, `BACKGROUND_TASK_NAME` constant, autostart Startup-shortcut filename (`startup_shortcut_path()`), reply-bridge host manifest `description` field, a code comment.
+- `ui/index.html`: `<title>`, sidebar brand text, page header `<h1>`, the FG Stock Uploader tab's description text.
+- `install.ps1`: `$AppName` variable (everything else in that script derives from it — install dir, exe filename, Desktop/Start Menu shortcut names).
+- `thunderbird_extension/manifest.json` + `background.js`: display `name`/`description` text only — **`browser_specific_settings.gecko.id` (`reply-bridge@vel-suede.local`) was deliberately left unchanged**, since that's the identifier Thunderbird actually uses to match the extension to its registered native-messaging host; changing it would have broken the (already-fragile, not-yet-verified-live) reply-bridge setup for no benefit. Re-packaged `mail-uploader-reply-bridge.xpi` after editing these — the `.xpi` filename itself was also left as-is (internal artifact name, not user-facing).
+- **Deliberately NOT renamed**: the project folder itself, `mail_app.py`'s filename, this skill's frontmatter `name: mail-advice-composer` slug, `REPLY_BRIDGE_HOST_NAME` (`com.velsuede.mail_uploader_reply_bridge`, an internal registry-keyed identifier), and the historical "Round N" write-ups above. Renaming any of these would be pure churn with real breakage risk (e.g. the registry key path) for zero user-visible benefit.
+
+**Live-machine migration performed** (this machine already had the app installed and running under the old name, so a plain code edit alone would have left orphaned state):
+1. Killed running `Mail Uploader.exe` processes before rebuilding.
+2. Deleted the old Desktop/Start Menu/Startup shortcuts named `Mail Uploader.lnk` and the old install directory `%LOCALAPPDATA%\Programs\Mail Uploader\`.
+3. Deleted the old Scheduled Task `Mail Uploader - ตรวจคิวส่งอัตโนมัติ` and recreated it under the new name `OverAll Uploader - ตรวจคิวส่งอัตโนมัติ`, pointing at the new install path — this task existed and was enabled, so it had to be actively migrated, not just left to bit-rot.
+4. Rebuilt with `pyinstaller --noconfirm --onefile --windowed --name "OverAll Uploader" --icon "ui/app_icon.ico" --add-data "ui;ui" --collect-all pymupdf mail_app.py` (this is now the **current, canonical build command** — supersedes the `--name "Mail Uploader"` command shown in the older Round sections above), ran the updated `install.ps1`, and recreated the autostart Startup shortcut under the new name (it was enabled before the rename, so it was recreated rather than silently dropped).
+5. Deleted the stale `Mail Uploader.spec` / `ตัวช่วยตอบอีเมล.spec` PyInstaller spec files from the repo root — PyInstaller regenerates a fresh `OverAll Uploader.spec` on the next build; the old ones were just confusing leftovers.
+
+**Gotcha hit again**: recreating the Scheduled Task via `schtasks /create` through PowerShell string interpolation (`& schtasks /create /tn ... /tr $tr ...`) failed with `Invalid argument/option` because of the same space-plus-embedded-quotes argv-mangling issue documented in the Auto FG Stock Importer's own SKILL notes (a different project, same root cause). Fixed the same way: called `schtasks` through Python's `subprocess.run([...])` with a proper argument **list** instead of a single interpolated string — Python's subprocess handles Windows argv quoting correctly where manual PowerShell string-building doesn't. **If you ever need to script a `schtasks /create` with a space-containing `/tr` value again, reach for `subprocess.run([list of args])` (or a launcher `.bat` file, see the Auto FG Stock Importer notes) — never a hand-built PowerShell string.**
 
 ## Categories built so far
 

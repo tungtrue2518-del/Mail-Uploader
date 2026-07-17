@@ -198,7 +198,7 @@ def archive_pr_po_file(file_path: str, po_no: str) -> dict:
 # ---------------------------------------------------------------------------
 # FG Stock Uploader status tab: this is a SEPARATE standalone tool (its own
 # folder, its own venv-independent pymysql dependency, its own Scheduled
-# Task) that Mail Uploader does not run or own — it just reads that tool's
+# Task) that OverAll Uploader does not run or own — it just reads that tool's
 # log/marker files and can trigger a manual run via its own launcher .bat.
 # See "C:\Users\IT-5\Desktop\Auto FG Stock Importer\auto_fg_stock.py".
 # ---------------------------------------------------------------------------
@@ -498,10 +498,10 @@ def startup_shortcut_path() -> str:
     startup_dir = os.path.join(
         os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs", "Startup"
     )
-    return os.path.join(startup_dir, "Mail Uploader.lnk")
+    return os.path.join(startup_dir, "OverAll Uploader.lnk")
 
 
-BACKGROUND_TASK_NAME = "Mail Uploader - ตรวจคิวส่งอัตโนมัติ"
+BACKGROUND_TASK_NAME = "OverAll Uploader - ตรวจคิวส่งอัตโนมัติ"
 
 
 def background_check_command() -> list:
@@ -614,7 +614,7 @@ def register_reply_bridge() -> dict:
 
         manifest = {
             "name": REPLY_BRIDGE_HOST_NAME,
-            "description": "Mail Uploader reply bridge",
+            "description": "OverAll Uploader reply bridge",
             "path": launcher,
             "type": "stdio",
             "allowed_extensions": [REPLY_BRIDGE_EXTENSION_ID],
@@ -1500,7 +1500,7 @@ def run_tray_and_watcher(window, icon_path):
         pystray.MenuItem("เปิดแอป", lambda: show_window(), default=True),
         pystray.MenuItem("ออกจากโปรแกรม", quit_app),
     )
-    tray_icon = pystray.Icon("mail_composer", image, "Mail Uploader", menu)
+    tray_icon = pystray.Icon("mail_composer", image, "OverAll Uploader", menu)
 
     def watch_scheduled():
         while not quitting["flag"]:
@@ -1547,7 +1547,7 @@ if __name__ == "__main__":
     ui_dir = os.path.join(RESOURCE_DIR, "ui")
     icon_path = os.path.join(ui_dir, "app_icon.ico")
     window = webview.create_window(
-        "Mail Uploader",
+        "OverAll Uploader",
         url=os.path.join(ui_dir, "index.html"),
         js_api=Api(),
         width=1180,

@@ -1,10 +1,10 @@
-﻿# ตัวติดตั้ง "Mail Uploader"
+﻿# ตัวติดตั้ง "OverAll Uploader"
 # วิธีใช้: คลิกขวาไฟล์นี้ > Run with PowerShell (หรือรันจาก PowerShell: .\install.ps1)
 # ทำสิ่งนี้: คัดลอก exe ไปไว้ที่ %LOCALAPPDATA%\Programs แล้วสร้าง shortcut บน Desktop และ Start Menu
 
 $ErrorActionPreference = "Stop"
 
-$AppName = "Mail Uploader"
+$AppName = "OverAll Uploader"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SourceExe = Join-Path $ScriptDir "dist\$AppName.exe"
 
