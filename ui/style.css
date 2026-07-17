@@ -104,6 +104,12 @@ body {
      first (as this stack used to) causes exactly the broken-looking Thai
      text ("จนเมสามารถ..." missing ไม้เอก/สระ) instead of falling back. */
   font-family: "Leelawadee UI", "Segoe UI", "Noto Sans Thai", Tahoma, sans-serif;
+  /* Explicit baseline so plain text (paragraphs, list items) matches the
+     scale every component already uses (11.5-18px) instead of falling back
+     to the browser default 16px/1.15 — that mismatch made body copy read
+     slightly heavier/tighter than everything around it. */
+  font-size: 14px;
+  line-height: 1.5;
   background:
     radial-gradient(900px 500px at 100% -10%, rgba(111, 160, 196, 0.16), transparent 60%),
     radial-gradient(700px 500px at -10% 110%, rgba(58, 111, 150, 0.10), transparent 55%),
@@ -368,8 +374,9 @@ body.dark .nav-item:hover {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 0 4px;
-  font-size: 22px;
+  margin: 0 0 5px;
+  font-size: 21px;
+  line-height: 1.3;
   color: var(--navy-dark);
 }
 
@@ -382,7 +389,8 @@ body.dark .nav-item:hover {
 .page-header p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 13.5px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .live-clock-wrap {
@@ -540,13 +548,15 @@ body.dark .stat-icon {
 }
 
 .stat-label {
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.3;
   color: var(--text-muted);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 
 .stat-value {
   font-size: 13.5px;
+  line-height: 1.3;
   font-weight: 600;
   color: var(--text-dark);
   white-space: nowrap;
@@ -564,7 +574,7 @@ body.dark .stat-icon {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .vendor-badge {
@@ -589,8 +599,9 @@ body.dark .stat-icon {
 }
 
 .vendor-header p {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
   font-size: 12.5px;
+  line-height: 1.4;
   color: var(--text-muted);
 }
 
@@ -627,8 +638,9 @@ body.dark .card:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 2px;
-  font-size: 18px;
+  margin: 0 0 5px;
+  font-size: 17px;
+  line-height: 1.3;
   color: var(--navy-dark);
 }
 
@@ -640,12 +652,13 @@ body.dark .card:hover {
 
 .card .card-desc {
   margin: 0 0 18px;
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.55;
   color: var(--text-muted);
 }
 
 .field {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .field-input-wrap {
@@ -667,9 +680,10 @@ body.dark .card:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 1.3;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 7px;
 }
 
 .field-action {
