@@ -501,6 +501,24 @@
             </label>
           </div>
 
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label"><span class="icon icon-document-check"></span>เปลี่ยนชื่อไฟล์ขั้น 3 อัตโนมัติ (OCR)</div>
+              <div class="settings-row-desc" id="step3-autorename-desc">เมื่อมีไฟล์ PDF ใหม่เข้าโฟลเดอร์ขั้น 3 ระบบจะอ่านเลข QC ในหน้าเอกสาร (สแกน) ด้วย OCR แล้วเปลี่ยนชื่อไฟล์เป็น PR&QC&lt;เลข&gt;.pdf ให้อัตโนมัติ (ทำงานเฉพาะตอนเปิดแอปค้างไว้)</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="step3-autorename-toggle" onchange="toggleStep3Autorename()" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div style="margin:2px 0 6px">
+            <button type="button" class="btn-secondary" id="step3-sweep-btn" onclick="sweepStep3Now()" style="margin-bottom:8px">
+              <span class="icon icon-refresh"></span>สแกน + เปลี่ยนชื่อทั้งโฟลเดอร์เดี๋ยวนี้
+            </button>
+            <div class="card-desc" style="margin:4px 0 6px">การเปลี่ยนชื่อล่าสุด:</div>
+            <div class="log-box" id="step3-rename-log"></div>
+          </div>
+
           <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px"><span class="icon icon-info" style="width:12px;height:12px;margin-right:4px;vertical-align:-1px"></span>เกี่ยวกับแอปนี้</h3>
           <div class="about-grid" id="about-grid"></div>
         </section>

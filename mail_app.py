@@ -28,6 +28,8 @@ CATEGORIES_FILE = os.path.join(APP_DIR, "categories.json")
 SEND_LOG_FILE = os.path.join(APP_DIR, "send_log.json")
 SCHEDULED_FILE = os.path.join(APP_DIR, "scheduled_sends.json")
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
+STEP3_RENAME_LOG_FILE = os.path.join(APP_DIR, "step3_rename_log.json")
+STEP3_SEEN_FILE = os.path.join(APP_DIR, "step3_seen.json")
 
 APP_VERSION = "3.0.0"
 APP_BUILD_DATE = "2026-07-16"
@@ -412,6 +414,158 @@ def find_number_in_file(path: str, pattern: "re.Pattern") -> str:
         return match.group(1)
     match = pattern.search(extract_pdf_text(path))
     return match.group(1) if match else ""
+
+
+# ---------------------------------------------------------------------------
+# Step-3 folder auto-rename (OCR)
+# ---------------------------------------------------------------------------
+# The ใบเสนอราคาขั้น 3 PDFs are SCANNED IMAGES — they have no text layer, so
+# extract_pdf_text() returns "" for every one of them and the quotation
+# number ("No. : QC<digits>" in the top-right Information box) can only be
+# read by OCR. A background watcher (see run_tray_and_watcher) renames each
+# new/changed PDF to PR&QC<digits>.pdf based on that OCR'd number. This
+# reuses the Tesseract install already on this machine via pytesseract; the
+# tesseract.exe binary is NOT bundled into the exe, so another machine
+# without Tesseract simply gets the feature disabled (read_qc returns "").
+TESSERACT_CANDIDATES = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+]
+# Captures the digits after a "QC" token, tolerating OCR separators/spaces
+# (e.g. "No. : QC 69065978" / "QC:69065978"). 6-10 digits: real numbers here
+# are QC + BE-year "69" + a 4-6 digit running number (QC6906657 .. QC69074704).
+QC_OCR_RE = re.compile(r"QC[\s:.\-]*?(\d{6,10})", re.IGNORECASE)
+
+
+def tesseract_path() -> str | None:
+    for p in TESSERACT_CANDIDATES:
+        if os.path.isfile(p):
+            return p
+    return shutil.which("tesseract")
+
+
+def _qc_candidates(ocr_text: str) -> list:
+    return ["QC" + digits for digits in QC_OCR_RE.findall(ocr_text or "")]
+
+
+def read_qc_number_from_pdf(path: str) -> str:
+    """OCR the quotation number ('No. : QC<digits>') off a scanned step-3 PDF.
+    Returns 'QC<digits>' or '' if it can't be read confidently. Never raises.
+
+    Safety: only returns a number when the OCR of the top-right crop yields
+    exactly ONE distinct QC value — any ambiguity (0 matches, or 2+ different
+    matches) returns '' so the caller leaves the file untouched rather than
+    risk an auto-rename to the wrong number."""
+    tess = tesseract_path()
+    if not tess:
+        return ""
+    try:
+        import fitz  # PyMuPDF
+        import pytesseract
+        from PIL import Image
+    except Exception:
+        return ""
+    try:
+        pytesseract.pytesseract.tesseract_cmd = tess
+        with fitz.open(path) as doc:
+            if doc.page_count < 1:
+                return ""
+            pix = doc[0].get_pixmap(matrix=fitz.Matrix(3, 3))  # 3x DPI for legible OCR
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+        w, h = img.size
+        # "No. : QC..." sits in the top-right Information box — cropping there
+        # is both faster and less error-prone than OCR'ing the whole page.
+        crop = img.crop((int(w * 0.5), 0, w, int(h * 0.32)))
+        candidates = _qc_candidates(pytesseract.image_to_string(crop))
+        if not candidates:
+            # layout shifted? one full-page retry before giving up
+            candidates = _qc_candidates(pytesseract.image_to_string(img))
+        distinct = set(candidates)
+        return candidates[0] if len(distinct) == 1 else ""
+    except Exception:
+        return ""
+
+
+def step3_target_name(qc_number: str) -> str:
+    return f"PR&{qc_number}.pdf"
+
+
+def process_step3_file(path: str) -> dict:
+    """Read one step-3 PDF's QC number by OCR and rename it to
+    PR&QC<number>.pdf when needed. Deliberately conservative — never
+    overwrites, never deletes, and skips (leaves the file as-is) on every
+    uncertain case:
+      - not a .pdf / file vanished
+      - OCR couldn't read a single confident QC number  -> 'unreadable'
+      - a file with the target name already exists       -> 'collision'
+      - the file is already correctly named              -> 'already_named'
+    Returns a result dict; callers log it."""
+    name = os.path.basename(path)
+    if not name.lower().endswith(".pdf"):
+        return {"action": "skip", "reason": "not_pdf", "file": name}
+    if not os.path.isfile(path):
+        return {"action": "skip", "reason": "missing", "file": name}
+    qc = read_qc_number_from_pdf(path)
+    if not qc:
+        return {"action": "skip", "reason": "unreadable", "file": name}
+    target = step3_target_name(qc)
+    if name == target:
+        return {"action": "already_named", "file": name, "qc": qc}
+    dest = os.path.join(os.path.dirname(path), target)
+    if os.path.exists(dest):
+        return {"action": "skip", "reason": "collision", "file": name, "target": target, "qc": qc}
+    try:
+        os.rename(path, dest)
+        return {"action": "renamed", "file": name, "target": target, "qc": qc}
+    except Exception as exc:
+        return {"action": "error", "file": name, "target": target, "message": str(exc)}
+
+
+def step3_autorename_enabled() -> bool:
+    """Read the on/off flag directly from config.json — NOT via load_config(),
+    whose `if v` truthy-merge would silently drop a stored `False` and revert
+    the toggle to the default-on. Missing key = enabled."""
+    if not os.path.isfile(CONFIG_FILE):
+        return True
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return bool(json.load(f).get("step3_autorename", True))
+    except Exception:
+        return True
+
+
+def append_step3_rename_log(entry: dict) -> None:
+    entry = dict(entry)
+    entry["timestamp"] = datetime.datetime.now().isoformat(timespec="seconds")
+    with _data_lock:
+        logs = load_json_list(STEP3_RENAME_LOG_FILE)
+        logs.insert(0, entry)
+        save_json_list(STEP3_RENAME_LOG_FILE, logs[:200])
+
+
+def sweep_step3_folder(log_all: bool = False) -> dict:
+    """Process every PDF in the step-3 folder once. Used for the startup
+    sweep and the manual 'สแกนเดี๋ยวนี้' button. Returns a summary count.
+    log_all=False logs only actionable outcomes (renamed / collision /
+    error); already-named files are counted but not written to the log."""
+    folder = folder_step3()
+    summary = {"renamed": 0, "already_named": 0, "unreadable": 0, "collision": 0, "error": 0}
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return summary
+    for name in names:
+        if not name.lower().endswith(".pdf"):
+            continue
+        result = process_step3_file(os.path.join(folder, name))
+        action = result.get("action")
+        reason = result.get("reason")
+        key = action if action in ("renamed", "already_named", "error") else reason
+        if key in summary:
+            summary[key] += 1
+        if action == "renamed" or reason == "collision" or action == "error" or (log_all and action == "already_named"):
+            append_step3_rename_log(result)
+    return summary
 
 
 def escape_field(value: str) -> str:
@@ -1292,6 +1446,37 @@ class Api:
         except Exception as exc:
             return {"ok": False, "message": f"เปิดโฟลเดอร์ไม่สำเร็จ: {exc}"}
 
+    def get_step3_autorename(self):
+        return {
+            "enabled": step3_autorename_enabled(),
+            "tesseract": bool(tesseract_path()),
+            "folder": folder_step3(),
+        }
+
+    def set_step3_autorename(self, enabled):
+        with _data_lock:
+            save_config({"step3_autorename": bool(enabled)})
+        return {"ok": True, "enabled": step3_autorename_enabled()}
+
+    def get_step3_rename_log(self, limit=30):
+        return load_json_list(STEP3_RENAME_LOG_FILE)[:limit]
+
+    def sweep_step3_now(self):
+        if not tesseract_path():
+            return {"ok": False, "message": "ไม่พบโปรแกรม OCR (Tesseract) ในเครื่องนี้ — ฟีเจอร์นี้ใช้ไม่ได้"}
+        summary = sweep_step3_folder()
+        parts = []
+        if summary["renamed"]:
+            parts.append(f"เปลี่ยนชื่อ {summary['renamed']} ไฟล์")
+        if summary["collision"]:
+            parts.append(f"ข้ามเพราะชื่อซ้ำ {summary['collision']}")
+        if summary["unreadable"]:
+            parts.append(f"อ่านไม่ออก {summary['unreadable']}")
+        if summary["error"]:
+            parts.append(f"ผิดพลาด {summary['error']}")
+        msg = "สแกนเสร็จแล้ว — " + (", ".join(parts) if parts else f"ชื่อถูกต้องอยู่แล้วทั้งหมด ({summary['already_named']} ไฟล์)")
+        return {"ok": True, "message": msg, "summary": summary}
+
     def get_advice_config(self):
         return load_config()
 
@@ -1535,7 +1720,87 @@ def run_tray_and_watcher(window, icon_path):
                     break
                 threading.Event().wait(1)
 
+    def watch_step3():
+        """Poll the step-3 folder ~every 2s and auto-rename new/changed PDFs
+        to PR&QC<number>.pdf (number OCR'd from the scan — see
+        process_step3_file). The first loop with an empty `seen` set is the
+        startup sweep; after that only new/changed files are OCR'd, and the
+        `seen` map is persisted so a growing folder doesn't re-OCR every file
+        on every launch. Notifies via the tray on each actual rename."""
+        # seen: {path: [mtime, size]} of files already resolved this + prior runs
+        try:
+            with open(STEP3_SEEN_FILE, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            seen = {k: tuple(v) for k, v in loaded.items()} if isinstance(loaded, dict) else {}
+        except Exception:
+            seen = {}
+
+        while not quitting["flag"]:
+            dirty = False
+            try:
+                if step3_autorename_enabled() and tesseract_path():
+                    folder = folder_step3()
+                    try:
+                        names = os.listdir(folder)
+                    except OSError:
+                        names = []
+                    pdfs = {n for n in names if n.lower().endswith(".pdf")}
+                    present_paths = {os.path.join(folder, n) for n in pdfs}
+                    # drop remembered files that no longer exist (keeps the map bounded)
+                    for stale in [p for p in seen if p not in present_paths]:
+                        seen.pop(stale, None)
+                        dirty = True
+                    for name in sorted(pdfs):
+                        if quitting["flag"]:
+                            break
+                        path = os.path.join(folder, name)
+                        try:
+                            st = os.stat(path)
+                        except OSError:
+                            continue
+                        # still being written/copied — let it settle first
+                        if time.time() - st.st_mtime < 2.0:
+                            continue
+                        sig = (st.st_mtime, st.st_size)
+                        if seen.get(path) == sig:
+                            continue
+                        result = process_step3_file(path)
+                        if result.get("action") == "renamed":
+                            seen.pop(path, None)
+                            newpath = os.path.join(folder, result["target"])
+                            try:
+                                nst = os.stat(newpath)
+                                seen[newpath] = (nst.st_mtime, nst.st_size)
+                            except OSError:
+                                pass
+                            append_step3_rename_log(result)
+                            try:
+                                tray_icon.notify(
+                                    f"{result['file']}  →  {result['target']}",
+                                    "เปลี่ยนชื่อไฟล์ขั้น 3 อัตโนมัติแล้ว",
+                                )
+                            except Exception:
+                                pass
+                        else:
+                            seen[path] = sig
+                            if result.get("reason") == "collision" or result.get("action") == "error":
+                                append_step3_rename_log(result)
+                        dirty = True
+                if dirty:
+                    try:
+                        with open(STEP3_SEEN_FILE, "w", encoding="utf-8") as f:
+                            json.dump({k: list(v) for k, v in seen.items()}, f)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            for _ in range(2):
+                if quitting["flag"]:
+                    break
+                threading.Event().wait(1)
+
     threading.Thread(target=watch_scheduled, daemon=True).start()
+    threading.Thread(target=watch_step3, daemon=True).start()
     tray_icon.run_detached()
     return tray_icon
 

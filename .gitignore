@@ -5,6 +5,8 @@ categories.json
 send_log.json
 send_log.json.bak
 scheduled_sends.json
+step3_rename_log.json
+step3_seen.json
 reply_jobs/
 reply_bridge_host_manifest.json
 run_reply_bridge_host.bat

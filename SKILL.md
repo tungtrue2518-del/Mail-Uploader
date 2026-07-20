@@ -248,6 +248,33 @@ The Outlook path (`apply_body_keeping_signature()`) is untouched and still adds 
 
 Also fixed in this same stretch: `archive_pr_po_file()` was a `shutil.move()` that ran ~2s after the step-2 draft *opened* (not after actual Send), which raced a still-open compose window — if the user clicked the attachment to preview it before sending, Thunderbird tried to read the now-relocated file and showed "File not found" (confirmed live: a real PO's PDF was already sitting in the `PR&PO` archive while its draft was still open, unsent). Changed to `shutil.copy2()` — the working-folder original is never removed anymore. Trade-off, accepted for now: the step-3 working folder no longer self-tidies after each send; ask before adding an automatic cleanup feature, since accumulating old files there wasn't the safety issue, breaking a live draft was.
 
+## Round 19: step-3 folder auto-rename by OCR'd QC number (main objective)
+
+The ใบเสนอราคาขั้น 3 PDFs are **scanned images with no text layer** — `extract_pdf_text()` returns `""` for every one of them (verified: `page.get_text()` len 0, one image per page). So the quotation number that the filename should carry ("No. : QC<digits>" in the top-right Information box) **cannot be read by text extraction — only OCR.** Tesseract is already installed on this machine (`C:\Program Files\Tesseract-OCR\tesseract.exe`) and `pytesseract` is available, so the feature uses those; the tesseract.exe binary is NOT bundled into the exe, so a machine without Tesseract simply gets the feature auto-disabled (`read_qc_number_from_pdf` returns `""`, and the Settings toggle shows a red "no OCR" warning).
+
+**What it does:** a background watcher (added to `run_tray_and_watcher`, thread `watch_step3`) polls `folder_step3()` every ~2s and renames each new/changed PDF to `PR&QC<digits>.pdf` based on the QC number OCR'd from the scan. Runs only while the app is open — which, with autostart + minimize-to-tray, is most of the time. First poll with an empty `seen` map = a full startup sweep (catches anything that arrived while closed).
+
+**Key functions (`mail_app.py`):**
+- `read_qc_number_from_pdf(path)` — renders page 1 at 3× DPI (PyMuPDF), crops the **top-right** quadrant (`w*0.5→w, 0→h*0.32`) where "No. : QC..." sits, OCRs it, extracts `QC[\s:.\-]*?(\d{6,10})`. **Safety: returns a number only when exactly ONE distinct QC value is found** — 0 matches or 2+ different matches → `""` → file left untouched. Full-page OCR is a one-time fallback if the crop finds nothing. Never raises.
+- `process_step3_file(path)` — conservative: never overwrites, never deletes. Skips on unreadable / collision (target name already exists) / already-correctly-named. Only `os.rename`s when it has a confident QC and the target is free.
+- `sweep_step3_folder()` — one-shot over the whole folder (startup sweep + the manual "สแกนเดี๋ยวนี้" button).
+- `step3_autorename_enabled()` — **reads the flag straight from config.json, NOT via `load_config()`.** `load_config()` merges with `{k: v for k, v in data.items() if v}`, which silently DROPS a stored `False` (falsy) and would revert the toggle to default-on. Any future boolean config flag must use a raw reader like this, not `load_config()`.
+- `watch_step3` persists a `seen` map (`step3_seen.json`, `{path: [mtime, size]}`) across launches so a folder that now **grows unbounded** (archiving switched from move to copy in Round 18) doesn't re-OCR every file on every launch — only new/changed files get OCR'd. Stale entries (vanished paths) are pruned each cycle. A 2s "settle guard" (`time.time() - mtime < 2`) skips files still being written/copied.
+- Rename activity → `step3_rename_log.json` (capped 200) + a tray notification on each actual rename.
+
+**Api methods:** `get_step3_autorename` / `set_step3_autorename` / `get_step3_rename_log` / `sweep_step3_now`. **UI:** a Settings toggle + "สแกน + เปลี่ยนชื่อทั้งโฟลเดอร์เดี๋ยวนี้" button + a color-coded recent-renames log box (reuses `.log-box`).
+
+**Build command now includes `--collect-all pytesseract`** (in addition to `--collect-all pymupdf`) so OCR works from the frozen exe:
+```
+pyinstaller --noconfirm --onefile --windowed --name "OverAll Uploader" --icon "ui/app_icon.ico" --add-data "ui;ui" --collect-all pymupdf --collect-all pytesseract mail_app.py
+```
+
+**Verified end-to-end in the FROZEN exe (not mocks):**
+- OCR read the QC number correctly on all 12 real files (Tesseract on clean printed digits is reliable here).
+- **Caught a genuinely mislabeled file**: `PR&QC69061748.pdf` — its scan actually says "No. : QC69065978" (the old name had accidentally used `80061748`, the customer code รหัสลูกค้า). The startup sweep renamed it to `PR&QC69065978.pdf`. This is the feature's real value: it fixes human naming mistakes, not just generic names.
+- **Live "new file arrives" test**: renamed a real file to a generic name (`zzz_incoming_scan_test.pdf`); the watcher OCR'd and renamed it back to `PR&QC69064329.pdf` within seconds — confirms the "ทันที" (immediate) requirement.
+- The two junk duplicates `PR&QC69061966..pdf` / `PR&QC69074704..pdf` (trailing "..") were correctly skipped as collisions, not overwritten. (User may want to delete those two by hand — they also make `latest_pdf()` occasionally show a "..pdf" as the step-3 "latest file"; harmless, pre-existing.)
+
 ## Categories built so far
 
 1. **แจ้งเตือนทั่วไป** (General) — free-form To/CC/Subject/Body → Thunderbird.

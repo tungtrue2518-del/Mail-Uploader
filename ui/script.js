@@ -151,6 +151,65 @@ function toggleReplyBridge() {
   });
 }
 
+function step3RenameLogLine(entry) {
+  if (entry.action === "renamed") {
+    return { cls: "log-line-ok", text: `เปลี่ยนชื่อ: ${entry.file}  →  ${entry.target}` };
+  }
+  if (entry.reason === "collision") {
+    return { cls: "log-line-skip", text: `ข้าม (ชื่อซ้ำ): ${entry.file}  →  ${entry.target} มีอยู่แล้ว` };
+  }
+  if (entry.action === "error") {
+    return { cls: "log-line-fail", text: `ผิดพลาด: ${entry.file} — ${entry.message || ""}` };
+  }
+  return { cls: "log-line-skip", text: `${entry.action || ""}: ${entry.file || ""}` };
+}
+
+async function loadStep3Autorename() {
+  const status = await window.pywebview.api.get_step3_autorename();
+  document.getElementById("step3-autorename-toggle").checked = !!status.enabled;
+  if (!status.tesseract) {
+    document.getElementById("step3-autorename-desc").innerHTML =
+      '<b style="color:#c0392b">ไม่พบโปรแกรม OCR (Tesseract) ในเครื่องนี้ — ฟีเจอร์นี้จะยังไม่ทำงานจนกว่าจะติดตั้ง Tesseract-OCR</b>';
+  }
+  loadStep3RenameLog();
+}
+
+async function loadStep3RenameLog() {
+  const logs = await window.pywebview.api.get_step3_rename_log(30);
+  const box = document.getElementById("step3-rename-log");
+  if (!logs || !logs.length) {
+    box.innerHTML = '<span style="opacity:.6">ยังไม่มีประวัติการเปลี่ยนชื่อ</span>';
+    return;
+  }
+  box.innerHTML = logs
+    .map((e) => {
+      const line = step3RenameLogLine(e);
+      const t = (e.timestamp || "").replace("T", " ").slice(5, 16);
+      return `<div class="${line.cls}">${escapeHtml(t)}  ${escapeHtml(line.text)}</div>`;
+    })
+    .join("");
+}
+
+function toggleStep3Autorename() {
+  const checked = document.getElementById("step3-autorename-toggle").checked;
+  window.pywebview.api.set_step3_autorename(checked).then(() => {
+    showStatus(true, checked ? "เปิดการเปลี่ยนชื่อไฟล์ขั้น 3 อัตโนมัติแล้ว" : "ปิดการเปลี่ยนชื่ออัตโนมัติแล้ว");
+  });
+}
+
+async function sweepStep3Now() {
+  const btn = document.getElementById("step3-sweep-btn");
+  btn.disabled = true;
+  showStatus(true, "กำลังสแกนและเปลี่ยนชื่อไฟล์ขั้น 3...");
+  try {
+    const result = await window.pywebview.api.sweep_step3_now();
+    showStatus(result.ok, result.message);
+  } finally {
+    btn.disabled = false;
+    loadStep3RenameLog();
+  }
+}
+
 async function loadAdviceConfig() {
   const config = await window.pywebview.api.get_advice_config();
   document.getElementById("advice-cfg-to").value = config.advice_to || "";
@@ -952,6 +1011,7 @@ window.addEventListener("pywebviewready", () => {
   loadAutostartStatus();
   loadBackgroundTaskStatus();
   loadReplyBridgeStatus();
+  loadStep3Autorename();
   loadAboutInfo();
   loadFgStockStatus();
   refreshScheduledQueue();
@@ -959,4 +1019,5 @@ window.addEventListener("pywebviewready", () => {
   setInterval(refreshAdviceFileInfo, 30000);
   setInterval(loadHistory, 30000);
   setInterval(loadFgStockStatus, 60000);
+  setInterval(loadStep3RenameLog, 30000);
 });
