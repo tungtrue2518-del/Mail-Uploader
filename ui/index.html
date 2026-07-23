@@ -298,17 +298,6 @@
             <label>เนื้อหา (Body)</label>
             <textarea id="outlook-leave-body"></textarea>
           </div>
-          <div class="field">
-            <label class="schedule-toggle-label">
-              <input type="checkbox" id="outlook-leave-schedule-toggle" onchange="toggleOutlookLeaveSchedule()" />
-              <span class="icon icon-clock"></span>
-              ตั้งเวลาส่งอัตโนมัติ (คิวใน Outbox ของ Outlook)
-            </label>
-            <div class="field-input-wrap" id="outlook-leave-schedule-wrap" style="display:none; margin-top:8px;">
-              <span class="icon icon-clock"></span>
-              <input type="datetime-local" id="outlook-leave-schedule-time" />
-            </div>
-          </div>
           <div class="attach-hint">
             <span class="icon icon-paperclip"></span>
             <span>รูปภาพเพิ่มเติม: <b id="image-outlook-leave-name">ไม่มี</b></span>
@@ -332,7 +321,7 @@
       <div class="card-grid">
         <section class="card" id="section-history" style="grid-column: 1 / -1;">
           <h2><span class="icon icon-list"></span>ประวัติการส่ง</h2>
-          <p class="card-desc">รายการอีเมลที่เปิดร่าง/ตั้งเวลาส่งล่าสุด 100 รายการ — กด "ส่งซ้ำ" เพื่อเปิดร่างใหม่ด้วยข้อมูลเดิม</p>
+          <p class="card-desc">รายการอีเมลที่เปิดร่างล่าสุด 100 รายการ — กด "ส่งซ้ำ" เพื่อเปิดร่างใหม่ด้วยข้อมูลเดิม</p>
 
           <div class="history-toolbar">
             <div class="field-input-wrap history-search-wrap">
@@ -383,7 +372,7 @@
       <div class="card-grid">
         <section class="card" id="section-settings" style="grid-column: 1 / -1;">
           <h2><span class="icon icon-settings"></span>ตั้งค่า</h2>
-          <p class="card-desc">สถานะระบบ คิวส่งอัตโนมัติ และข้อมูลแอปพลิเคชัน</p>
+          <p class="card-desc">สถานะระบบและข้อมูลแอปพลิเคชัน</p>
 
           <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px">สถานะระบบ</h3>
           <div id="env-status">กำลังตรวจสอบ...</div>
@@ -454,9 +443,6 @@
           <div class="card-desc" style="margin-bottom:6px">ตัวอย่าง:</div>
           <div id="sig-preview" style="background:var(--bg);border-radius:var(--radius-md);padding:12px;margin-bottom:18px"></div>
 
-          <h3 style="font-size:13.5px;color:var(--navy-dark);margin:18px 0 8px">คิวส่งอัตโนมัติ (Outlook)</h3>
-          <div id="queue-list"></div>
-
           <div class="settings-row">
             <div>
               <div class="settings-row-label"><span class="icon icon-moon"></span>โหมดกลางคืน (Dark mode)</div>
@@ -475,17 +461,6 @@
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="autostart-toggle" onchange="toggleAutostart()" />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label"><span class="icon icon-refresh"></span>ระบบทำงานเบื้องหลัง</div>
-              <div class="settings-row-desc">ปิดหน้าต่างแล้วแอปยังทำงานอยู่ใน system tray (มุมขวาล่าง) + ตั้ง Windows Scheduled Task ตรวจคิวส่งอัตโนมัติทุก 15 นาที แม้ปิดแอปไปแล้วก็ยังปลุก Outlook ให้ส่งได้ตรงเวลา</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="background-task-toggle" onchange="toggleBackgroundTask()" />
               <span class="toggle-slider"></span>
             </label>
           </div>

@@ -32,7 +32,9 @@ Requires `pywebview` and `pywin32` (both already installed on this machine). Kil
 
 ## Core design rule (do not break this)
 
-**Every action opens a draft for manual review — never auto-send.** The one exception is the opt-in "ตั้งเวลาส่งอัตโนมัติ" checkbox on the Outlook แจ้งเลิกงาน card, which queues to Outlook's Outbox via `DeferredDeliveryTime` (still editable/cancelable there before it actually sends). This exception was explicitly requested and scoped by the user to Outlook only — don't extend auto-send to other categories without asking first.
+**Every action opens a draft for manual review — the app NEVER sends an email itself. There are ZERO exceptions.** `_compose_outlook()` only ever calls `mail.Display()`, and the Thunderbird path only ever opens a `-compose` window. There is no code path anywhere that calls `.Send()`. **Do not add one** — not a "schedule send", not a "send now", not a background flush. See Round 20 for why this rule is now absolute (a scheduled draft silently went out to the whole distribution list). If a user asks for auto-send, explain this rule and that they must click Send themselves in Outlook/Thunderbird.
+
+(Historical: Rounds 1–19 had an opt-in "ตั้งเวลาส่งอัตโนมัติ" scheduled-send exception on the Outlook แจ้งเลิกงาน card — `DeferredDeliveryTime` + `.Send()`. It was **removed entirely in Round 20** after it caused a real incident. Any mention of scheduled/deferred send, `scheduled_sends.json`, `add_scheduled_send`, the "ระบบทำงานเบื้องหลัง" background Scheduled Task, or `--background-check` elsewhere in this doc describes code that no longer exists.)
 
 ## Professional-grade features (added 2026-07-14)
 
@@ -274,6 +276,21 @@ pyinstaller --noconfirm --onefile --windowed --name "OverAll Uploader" --icon "u
 - **Caught a genuinely mislabeled file**: `PR&QC69061748.pdf` — its scan actually says "No. : QC69065978" (the old name had accidentally used `80061748`, the customer code รหัสลูกค้า). The startup sweep renamed it to `PR&QC69065978.pdf`. This is the feature's real value: it fixes human naming mistakes, not just generic names.
 - **Live "new file arrives" test**: renamed a real file to a generic name (`zzz_incoming_scan_test.pdf`); the watcher OCR'd and renamed it back to `PR&QC69064329.pdf` within seconds — confirms the "ทันที" (immediate) requirement.
 - The two junk duplicates `PR&QC69061966..pdf` / `PR&QC69074704..pdf` (trailing "..") were correctly skipped as collisions, not overwritten. (User may want to delete those two by hand — they also make `latest_pdf()` occasionally show a "..pdf" as the step-3 "latest file"; harmless, pre-existing.)
+
+## Round 20: removed the scheduled/deferred auto-send entirely (after a real incident)
+
+**What triggered this:** a Standby แจ้งเลิกงาน email went out to the whole ~120-recipient distribution list at 09:00 one morning, and the user said they hadn't done anything. Investigation (read straight from Outlook via COM): the message was **Created 20 Jul 17:55** (matches the app's send-log "opened a draft" entry) but **SentOn 23 Jul 09:00**, with **DeferredDeliveryTime = null (the 4501-01-01 sentinel)**. So it was a plain draft that sat for 3 days and got sent manually — NOT the app auto-sending (no `scheduled_sends.json`, no send-log "ตั้งเวลาส่ง" entry, background task ran on an empty queue). The app was cleared of auto-sending it. But the near-miss made the user decide the scheduled-send capability was too dangerous to keep at all: **"ลบ ลางาน อัตโนมัติ ออก มันอันตรายเกินไป."**
+
+**Removed completely (code + UI + OS state):**
+- `_compose_outlook()`: dropped the `deferred_time` param and the entire `DeferredDeliveryTime` + `mail.Send()` branch. It now only ever `mail.Display()`s a draft. (Also removed the param from `open_outlook_leave`, `open_custom`'s outlook branch, and `resend_log`.)
+- Deleted `add_scheduled_send()`, `Api.get_scheduled_sends()`, `Api.dismiss_scheduled()`, and the `SCHEDULED_FILE` constant.
+- Deleted the whole background-Scheduled-Task machinery that existed ONLY to flush deferred sends: `run_background_check()`, `background_check_command()`, `is_background_task_registered()`, `BACKGROUND_TASK_NAME`, `Api.get_background_task()`, `Api.set_background_task()`, and the `--background-check` entry point in `__main__`.
+- Removed the `watch_scheduled` tray thread (the "due soon" notifier). `run_tray_and_watcher` now runs only minimize-to-tray + the Round-19 `watch_step3` OCR-rename watcher.
+- UI: removed the "ตั้งเวลาส่งอัตโนมัติ" checkbox + datetime input from the แจ้งเลิกงาน card; removed the "คิวส่งอัตโนมัติ (Outlook)" section (`queue-list`) and the "ระบบทำงานเบื้องหลัง" toggle from Settings; removed the JS (`toggleOutlookLeaveSchedule`, `renderScheduledQueue`, `dismissScheduled`, `refreshScheduledQueue`, `checkDueSoonWarning`, `toggleBackgroundTask`, `loadBackgroundTaskStatus`, `toLocalDatetimeInputValue`) and their init calls/intervals.
+- **System cleanup done on this machine**: `schtasks /delete` for both `"OverAll Uploader - ตรวจคิวส่งอัตโนมัติ"` and the legacy `"Mail Uploader - ตรวจคิวส่งอัตโนมัติ"`. Only the unrelated `"Auto FG Stock Importer"` task remains (that's the separate FG-Stock tool — leave it).
+- The minimize-to-tray + autostart features are **kept** — those are unrelated to auto-send. Leftover unused CSS (`.queue-item*`) and the now-static `outlook-leave-btn-label/icon` ids were left in place (harmless).
+
+**Verified in the frozen exe (computer-use):** app launches fine; the แจ้งเลิกงาน page now has only To/CC/Subject/Body + image-attach + a single "เปิดใน Outlook" button (no schedule checkbox); the Settings page no longer shows "ระบบทำงานเบื้องหลัง" or "คิวส่งอัตโนมัติ" — Dark mode now follows the signature preview directly, no layout gap.
 
 ## Categories built so far
 

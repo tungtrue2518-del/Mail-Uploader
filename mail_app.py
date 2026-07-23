@@ -26,7 +26,6 @@ else:
 
 CATEGORIES_FILE = os.path.join(APP_DIR, "categories.json")
 SEND_LOG_FILE = os.path.join(APP_DIR, "send_log.json")
-SCHEDULED_FILE = os.path.join(APP_DIR, "scheduled_sends.json")
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 STEP3_RENAME_LOG_FILE = os.path.join(APP_DIR, "step3_rename_log.json")
 STEP3_SEEN_FILE = os.path.join(APP_DIR, "step3_seen.json")
@@ -628,18 +627,6 @@ def append_send_log(entry: dict) -> dict:
     return entry
 
 
-def add_scheduled_send(entry: dict) -> dict:
-    entry = dict(entry)
-    entry["id"] = uuid.uuid4().hex[:10]
-    entry["created_at"] = datetime.datetime.now().isoformat(timespec="seconds")
-    entry["status"] = "pending"
-    with _data_lock:
-        items = load_json_list(SCHEDULED_FILE)
-        items.append(entry)
-        save_json_list(SCHEDULED_FILE, items)
-    return entry
-
-
 def python_executable_for_shortcut() -> str:
     exe = sys.executable
     pythonw = os.path.join(os.path.dirname(exe), "pythonw.exe")
@@ -661,54 +648,6 @@ def startup_shortcut_path() -> str:
         os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs", "Startup"
     )
     return os.path.join(startup_dir, "OverAll Uploader.lnk")
-
-
-BACKGROUND_TASK_NAME = "OverAll Uploader - ตรวจคิวส่งอัตโนมัติ"
-
-
-def background_check_command() -> list:
-    if getattr(sys, "frozen", False):
-        return [sys.executable, "--background-check"]
-    pythonw = python_executable_for_shortcut()
-    return [pythonw, os.path.join(APP_DIR, "mail_app.py"), "--background-check"]
-
-
-def is_background_task_registered() -> bool:
-    try:
-        result = subprocess.run(
-            ["schtasks", "/query", "/tn", BACKGROUND_TASK_NAME],
-            capture_output=True,
-            timeout=10,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
-def run_background_check() -> None:
-    """Headless entry point (no GUI window): wakes Outlook up if a scheduled
-    send is due soon, so Outlook's own Outbox can flush it on time even if
-    nobody has the app open. Intended to run from a Windows Scheduled Task."""
-    items = load_json_list(SCHEDULED_FILE)
-    now = datetime.datetime.now()
-    needs_outlook = False
-    for item in items:
-        if item.get("status") not in ("pending", "due"):
-            continue
-        try:
-            send_dt = datetime.datetime.fromisoformat(item["send_time"])
-        except Exception:
-            continue
-        if send_dt <= now + datetime.timedelta(minutes=20):
-            needs_outlook = True
-            break
-    if needs_outlook and is_outlook_installed():
-        try:
-            import win32com.client
-
-            win32com.client.Dispatch("Outlook.Application")
-        except Exception:
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -993,9 +932,9 @@ class Api:
             extra_attachments=[image_path] if image_path else None,
         )
 
-    def open_outlook_leave(self, to_addr, cc_addr, subject, body, deferred_time=None, image_path=None):
+    def open_outlook_leave(self, to_addr, cc_addr, subject, body, image_path=None):
         return self._compose_outlook(
-            to_addr, cc_addr, subject, body, deferred_time, "Outlook - แจ้งเลิกงาน",
+            to_addr, cc_addr, subject, body, "Outlook - แจ้งเลิกงาน",
             attachments=[image_path] if image_path else None,
         )
 
@@ -1057,7 +996,7 @@ class Api:
         label = f"หมวดหมู่ - {category['name']}"
         if category["client"] == "outlook":
             return self._compose_outlook(
-                final_to, final_cc, subject, body, None, label,
+                final_to, final_cc, subject, body, label,
                 attachments=[image_path] if image_path else None,
             )
         return self._compose_thunderbird(
@@ -1227,7 +1166,14 @@ class Api:
         except Exception as exc:
             return {"ok": False, "message": f"เกิดข้อผิดพลาด: {exc} — ตรวจสอบว่าติดตั้ง Thunderbird ไว้ที่เครื่องนี้แล้ว"}
 
-    def _compose_outlook(self, to_addr, cc_addr, subject, body, deferred_time=None, category_label="Outlook", attachments=None):
+    def _compose_outlook(self, to_addr, cc_addr, subject, body, category_label="Outlook", attachments=None):
+        # NOTE: this method ONLY ever opens a draft (mail.Display()) — it
+        # never calls mail.Send(). The scheduled/deferred auto-send path
+        # (DeferredDeliveryTime + Send) was removed on purpose: it was the
+        # only place the app could send an email without a human clicking
+        # Send, and a draft left over from a previous day silently went out
+        # to the whole distribution list once. Do NOT reintroduce an
+        # auto-send path here.
         validation_error = validate_recipients(to_addr, cc_addr)
         if validation_error:
             return {"ok": False, "message": validation_error}
@@ -1245,45 +1191,6 @@ class Api:
             for path in attachments or []:
                 if path and os.path.isfile(path):
                     mail.Attachments.Add(os.path.abspath(path))
-
-            if deferred_time:
-                try:
-                    send_dt = datetime.datetime.fromisoformat(deferred_time)
-                except ValueError:
-                    return {"ok": False, "message": "รูปแบบเวลาไม่ถูกต้อง"}
-                if send_dt <= datetime.datetime.now():
-                    return {"ok": False, "message": "กรุณาเลือกเวลาส่งที่เป็นอนาคต"}
-                mail.DeferredDeliveryTime = send_dt
-                mail.Send()
-                formatted = send_dt.strftime("%d/%m/%Y %H:%M")
-                append_send_log(
-                    {
-                        "client": "outlook",
-                        "category": category_label,
-                        "to": to_addr or "",
-                        "cc": cc_addr or "",
-                        "subject": subject or "",
-                        "body": body or "",
-                        "attachment": ", ".join(os.path.basename(p) for p in (attachments or []) if p),
-                        "status": f"ตั้งเวลาส่ง {formatted} น.",
-                    }
-                )
-                add_scheduled_send(
-                    {
-                        "to": to_addr or "",
-                        "cc": cc_addr or "",
-                        "subject": subject or "",
-                        "category": category_label,
-                        "send_time": send_dt.isoformat(timespec="minutes"),
-                    }
-                )
-                return {
-                    "ok": True,
-                    "message": (
-                        f"ตั้งเวลาส่งอัตโนมัติแล้วที่ {formatted} น. — อีเมลอยู่ใน Outbox ของ Outlook "
-                        "ยังเปิดแก้ไขหรือยกเลิกได้ก่อนถึงเวลา (ต้องเปิด Outlook ค้างไว้จนถึงเวลาส่ง)"
-                    ),
-                }
 
             mail.Display()
             append_send_log(
@@ -1352,34 +1259,8 @@ class Api:
             return {"ok": False, "message": "ไม่พบประวัตินี้"}
         label = entry.get("category", "ส่งซ้ำจากประวัติ")
         if entry.get("client") == "outlook":
-            return self._compose_outlook(entry.get("to", ""), entry.get("cc", ""), entry.get("subject", ""), entry.get("body", ""), None, label)
+            return self._compose_outlook(entry.get("to", ""), entry.get("cc", ""), entry.get("subject", ""), entry.get("body", ""), label)
         return self._compose_thunderbird(entry.get("to", ""), entry.get("cc", ""), entry.get("subject", ""), entry.get("body", ""), None, label)
-
-    def get_scheduled_sends(self):
-        with _data_lock:
-            items = load_json_list(SCHEDULED_FILE)
-            now = datetime.datetime.now()
-            changed = False
-            for item in items:
-                if item.get("status") == "pending":
-                    try:
-                        send_dt = datetime.datetime.fromisoformat(item["send_time"])
-                    except Exception:
-                        continue
-                    if send_dt <= now:
-                        item["status"] = "due"
-                        changed = True
-            if changed:
-                save_json_list(SCHEDULED_FILE, items)
-        items.sort(key=lambda x: x.get("send_time", ""))
-        return items
-
-    def dismiss_scheduled(self, sched_id):
-        with _data_lock:
-            items = load_json_list(SCHEDULED_FILE)
-            items = [it for it in items if it["id"] != sched_id]
-            save_json_list(SCHEDULED_FILE, items)
-        return {"ok": True}
 
     def check_environment(self):
         warnings = []
@@ -1571,42 +1452,6 @@ class Api:
             return register_reply_bridge()
         return unregister_reply_bridge()
 
-    def get_background_task(self):
-        return {"enabled": is_background_task_registered()}
-
-    def set_background_task(self, enabled):
-        if enabled:
-            cmd_parts = background_check_command()
-            tr = " ".join(f'"{p}"' if " " in p else p for p in cmd_parts)
-            try:
-                result = subprocess.run(
-                    [
-                        "schtasks", "/create", "/tn", BACKGROUND_TASK_NAME,
-                        "/tr", tr, "/sc", "minute", "/mo", "15", "/f",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-                if result.returncode != 0:
-                    return {"ok": False, "message": f"สร้าง Scheduled Task ไม่สำเร็จ: {result.stderr.strip() or result.stdout.strip()}"}
-                return {"ok": True, "message": "เปิดใช้งานระบบตรวจคิวเบื้องหลังแล้ว (ทำงานทุก 15 นาที แม้ปิดแอป)"}
-            except Exception as exc:
-                return {"ok": False, "message": f"สร้าง Scheduled Task ไม่สำเร็จ: {exc}"}
-        else:
-            try:
-                result = subprocess.run(
-                    ["schtasks", "/delete", "/tn", BACKGROUND_TASK_NAME, "/f"],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-                if result.returncode != 0 and "ไม่พบ" not in result.stderr and "cannot find" not in result.stderr.lower():
-                    return {"ok": False, "message": f"ปิดใช้งานไม่สำเร็จ: {result.stderr.strip()}"}
-                return {"ok": True, "message": "ปิดระบบตรวจคิวเบื้องหลังแล้ว"}
-            except Exception as exc:
-                return {"ok": False, "message": f"ปิดใช้งานไม่สำเร็จ: {exc}"}
-
     def get_outlook_contacts(self):
         try:
             import win32com.client
@@ -1655,14 +1500,12 @@ class Api:
 
 
 def run_tray_and_watcher(window, icon_path):
-    """System tray icon (minimize-to-tray) + a background thread that posts a
-    native notification when a scheduled Outlook send is due soon, even while
-    the window is hidden."""
+    """System tray icon (minimize-to-tray) + the step-3 folder auto-rename
+    watcher thread (watch_step3), which runs while the app is open."""
     import pystray
     from PIL import Image
 
     quitting = {"flag": False}
-    notified_ids = set()
 
     def show_window():
         window.show()
@@ -1691,34 +1534,6 @@ def run_tray_and_watcher(window, icon_path):
         pystray.MenuItem("ออกจากโปรแกรม", quit_app),
     )
     tray_icon = pystray.Icon("mail_composer", image, "OverAll Uploader", menu)
-
-    def watch_scheduled():
-        while not quitting["flag"]:
-            try:
-                items = load_json_list(SCHEDULED_FILE)
-                now = datetime.datetime.now()
-                for item in items:
-                    if item.get("status") != "pending" or item.get("id") in notified_ids:
-                        continue
-                    try:
-                        send_dt = datetime.datetime.fromisoformat(item["send_time"])
-                    except Exception:
-                        continue
-                    if 0 < (send_dt - now).total_seconds() <= 5 * 60:
-                        notified_ids.add(item["id"])
-                        try:
-                            tray_icon.notify(
-                                f"{item.get('subject') or '(ไม่มีหัวข้อ)'} — กำหนดส่ง {send_dt.strftime('%H:%M')} น.",
-                                "ใกล้ถึงเวลาส่งอีเมลอัตโนมัติ",
-                            )
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-            for _ in range(60):
-                if quitting["flag"]:
-                    break
-                threading.Event().wait(1)
 
     def watch_step3():
         """Poll the step-3 folder ~every 2s and auto-rename new/changed PDFs
@@ -1799,17 +1614,12 @@ def run_tray_and_watcher(window, icon_path):
                     break
                 threading.Event().wait(1)
 
-    threading.Thread(target=watch_scheduled, daemon=True).start()
     threading.Thread(target=watch_step3, daemon=True).start()
     tray_icon.run_detached()
     return tray_icon
 
 
 if __name__ == "__main__":
-    if "--background-check" in sys.argv:
-        run_background_check()
-        sys.exit(0)
-
     if "--reply-bridge-host" in sys.argv:
         run_reply_bridge_host()
         sys.exit(0)

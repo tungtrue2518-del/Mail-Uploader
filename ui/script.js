@@ -125,19 +125,6 @@ function toggleAutostart() {
   });
 }
 
-async function loadBackgroundTaskStatus() {
-  const result = await window.pywebview.api.get_background_task();
-  document.getElementById("background-task-toggle").checked = !!result.enabled;
-}
-
-function toggleBackgroundTask() {
-  const checked = document.getElementById("background-task-toggle").checked;
-  window.pywebview.api.set_background_task(checked).then((result) => {
-    showStatus(result.ok, result.message);
-    if (!result.ok) document.getElementById("background-task-toggle").checked = !checked;
-  });
-}
-
 async function loadReplyBridgeStatus() {
   const result = await window.pywebview.api.get_reply_bridge();
   document.getElementById("reply-bridge-toggle").checked = !!result.enabled;
@@ -347,54 +334,6 @@ function formatDateTimeThai(iso) {
   }
 }
 
-function renderScheduledQueue(items) {
-  const container = document.getElementById("queue-list");
-  if (!items.length) {
-    container.innerHTML = '<div class="queue-empty"><span class="icon icon-clock empty-state-icon"></span>ยังไม่มีรายการที่ตั้งเวลาส่งไว้</div>';
-    return;
-  }
-  container.innerHTML = items
-    .map(
-      (it) => `
-    <div class="queue-item ${it.status === "due" ? "due" : ""}">
-      <div class="queue-item-icon"><span class="icon icon-clock"></span></div>
-      <div class="queue-item-main">
-        <div class="queue-item-subject">${escapeHtml(it.subject || "(ไม่มีหัวข้อ)")}</div>
-        <div class="queue-item-meta">${escapeHtml(it.category || "")} · ถึง ${escapeHtml(it.to || "-")} · กำหนดส่ง ${formatDateTimeThai(it.send_time)} ${it.status === "due" ? "· ถึงเวลาแล้ว" : ""}</div>
-      </div>
-      <button type="button" class="resend-btn" onclick="dismissScheduled('${it.id}')"><span class="icon icon-trash"></span>เอาออกจากรายการ</button>
-    </div>
-  `
-    )
-    .join("");
-}
-
-async function dismissScheduled(id) {
-  await window.pywebview.api.dismiss_scheduled(id);
-  refreshScheduledQueue();
-}
-
-const warnedScheduledIds = new Set();
-
-function checkDueSoonWarning(items) {
-  const now = Date.now();
-  const soon = items.find((it) => {
-    if (it.status !== "pending" || warnedScheduledIds.has(it.id)) return false;
-    const t = new Date(it.send_time).getTime();
-    return t - now > 0 && t - now <= 5 * 60000;
-  });
-  if (soon) {
-    warnedScheduledIds.add(soon.id);
-    showStatus(true, `ใกล้ถึงเวลาส่งอัตโนมัติ: "${soon.subject || "(ไม่มีหัวข้อ)"}" ในอีกไม่กี่นาที — ยังแก้ไข/ยกเลิกได้ที่ Outbox ของ Outlook`);
-  }
-}
-
-async function refreshScheduledQueue() {
-  const items = await window.pywebview.api.get_scheduled_sends();
-  renderScheduledQueue(items);
-  checkDueSoonWarning(items);
-}
-
 /* ---------- History ---------- */
 
 let historyCache = [];
@@ -578,41 +517,16 @@ function sendGeneral() {
   });
 }
 
-function toLocalDatetimeInputValue(date) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function toggleOutlookLeaveSchedule() {
-  const checked = document.getElementById("outlook-leave-schedule-toggle").checked;
-  document.getElementById("outlook-leave-schedule-wrap").style.display = checked ? "flex" : "none";
-  document.getElementById("outlook-leave-btn-label").textContent = checked ? "ตั้งเวลาส่งอัตโนมัติ" : "เปิดใน Outlook";
-  document.getElementById("outlook-leave-btn-icon").className = checked ? "icon icon-clock" : "icon icon-send";
-  if (checked) {
-    const input = document.getElementById("outlook-leave-schedule-time");
-    if (!input.value) {
-      input.value = toLocalDatetimeInputValue(new Date(Date.now() + 5 * 60000));
-    }
-  }
-}
-
 function sendOutlookLeave() {
   withButton("outlook-leave-btn", async () => {
     const to = document.getElementById("outlook-leave-to").value.trim();
     const cc = document.getElementById("outlook-leave-cc").value.trim();
     const subject = document.getElementById("outlook-leave-subject").value.trim();
     const body = document.getElementById("outlook-leave-body").value;
-    const scheduled = document.getElementById("outlook-leave-schedule-toggle").checked;
-    const deferredTime = scheduled ? document.getElementById("outlook-leave-schedule-time").value : null;
-    if (scheduled && !deferredTime) {
-      showStatus(false, "กรุณาเลือกวันเวลาที่ต้องการส่ง");
-      return;
-    }
-    const result = await window.pywebview.api.open_outlook_leave(to, cc, subject, body, deferredTime, imageOverrides["outlook-leave"] || null);
+    const result = await window.pywebview.api.open_outlook_leave(to, cc, subject, body, imageOverrides["outlook-leave"] || null);
     showStatus(result.ok, result.message);
     if (result.ok) {
       loadHistory();
-      refreshScheduledQueue();
       clearImage("outlook-leave");
     }
   });
@@ -1009,13 +923,10 @@ window.addEventListener("pywebviewready", () => {
   loadAdviceConfig();
   loadSignatureConfig();
   loadAutostartStatus();
-  loadBackgroundTaskStatus();
   loadReplyBridgeStatus();
   loadStep3Autorename();
   loadAboutInfo();
   loadFgStockStatus();
-  refreshScheduledQueue();
-  setInterval(refreshScheduledQueue, 60000);
   setInterval(refreshAdviceFileInfo, 30000);
   setInterval(loadHistory, 30000);
   setInterval(loadFgStockStatus, 60000);
