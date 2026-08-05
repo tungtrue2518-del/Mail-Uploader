@@ -169,13 +169,37 @@ QUOTE_NUMBER_RE = re.compile(r"(Q\d{6,})", re.IGNORECASE)
 
 PR_PO_ARCHIVE_ROOT = r"\\vsth-fsrv\IT\fix\PR&PO"
 MONTH_ABBR = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+MONTH_FULL = ["", "January", "February", "March", "April", "May", "June", "July",
+              "August", "September", "October", "November", "December"]
+
+
+def resolve_archive_month_dir(year_dir: str, month: int) -> str:
+    """The real \\vsth-fsrv\\IT\\fix\\PR&PO archive was built by hand over the
+    years and its month-folder naming is inconsistent (most months are the
+    3-letter abbreviation, but June/July have been spelled out in full in
+    more than one year folder). Rather than guess and risk creating a THIRD
+    variant, prefer whichever name already exists on disk for this year;
+    only fall back to the 3-letter abbreviation (the majority convention)
+    when creating a month folder for the first time."""
+    abbr_path = os.path.join(year_dir, MONTH_ABBR[month])
+    full_path = os.path.join(year_dir, MONTH_FULL[month])
+    if os.path.isdir(full_path):
+        return full_path
+    return abbr_path
 
 
 def archive_pr_po_file(file_path: str, po_no: str) -> dict:
     """After step 2 (อนุมัติ+จัดส่ง) opens a draft, COPY the PDF into the
-    shared PR&PO archive, organized by Buddhist year / month abbreviation,
-    renamed to just the PO number. Never raises — callers treat archiving as
-    best-effort so a network hiccup doesn't undo an already-sent email.
+    shared PR&PO archive, renamed to just the PO number. Never raises —
+    callers treat archiving as best-effort so a network hiccup doesn't undo
+    an already-sent email.
+
+    Year is the plain calendar (ค.ศ.) year, matching the real folder names
+    on the share (2023/2024/2025/2026/...) — an earlier version used the
+    Buddhist Era year (+543, e.g. "2569") which doesn't match anything on
+    disk and created a stray duplicate year folder. That folder's contents
+    were manually merged back into the correct 2026\\July on 2026-07-23;
+    don't reintroduce the +543 offset here.
 
     Was originally a MOVE, but that broke the still-open Thunderbird draft:
     this runs ~2s after the draft opens (see open_step2), not after the user
@@ -191,16 +215,16 @@ def archive_pr_po_file(file_path: str, po_no: str) -> dict:
         return {"ok": False, "message": "ไม่ได้คัดลอกไฟล์เข้า PR&PO เพราะไม่พบไฟล์ต้นทาง"}
 
     today = datetime.date.today()
-    buddhist_year = str(today.year + 543)
-    month_folder = MONTH_ABBR[today.month]
-    dest_dir = os.path.join(PR_PO_ARCHIVE_ROOT, buddhist_year, month_folder)
+    year_dir = os.path.join(PR_PO_ARCHIVE_ROOT, str(today.year))
+    dest_dir = resolve_archive_month_dir(year_dir, today.month)
     ext = os.path.splitext(file_path)[1] or ".pdf"
     dest_path = os.path.join(dest_dir, f"{po_no}{ext}")
 
     try:
         os.makedirs(dest_dir, exist_ok=True)
         shutil.copy2(file_path, dest_path)
-        return {"ok": True, "message": f"คัดลอกไฟล์เข้า PR&PO แล้ว: {buddhist_year}\\{month_folder}\\{po_no}{ext}"}
+        shown = os.path.relpath(dest_path, PR_PO_ARCHIVE_ROOT)
+        return {"ok": True, "message": f"คัดลอกไฟล์เข้า PR&PO แล้ว: {shown}"}
     except Exception as exc:
         return {"ok": False, "message": f"ส่งอีเมลสำเร็จ แต่คัดลอกไฟล์เข้า PR&PO ไม่สำเร็จ: {exc}"}
 

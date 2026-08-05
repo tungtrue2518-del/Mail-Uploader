@@ -292,6 +292,16 @@ pyinstaller --noconfirm --onefile --windowed --name "OverAll Uploader" --icon "u
 
 **Verified in the frozen exe (computer-use):** app launches fine; the แจ้งเลิกงาน page now has only To/CC/Subject/Body + image-attach + a single "เปิดใน Outlook" button (no schedule checkbox); the Settings page no longer shows "ระบบทำงานเบื้องหลัง" or "คิวส่งอัตโนมัติ" — Dark mode now follows the signature preview directly, no layout gap.
 
+## Round 21: PR&PO archive was using the wrong year (Buddhist Era, not calendar)
+
+`archive_pr_po_file()` (Round 6) computed the destination year as `today.year + 543` (Buddhist Era, e.g. "2569"), but the real `\\vsth-fsrv\IT\fix\PR&PO` share is organized by plain calendar year (`2023`, `2024`, `2025`, `2026`, ...) — confirmed by listing the actual share. This had been silently creating a stray `PR&PO\2569\Jul\` folder alongside the real `PR&PO\2026\July\` for every archived file since Round 6, never noticed until the user pointed at the real folder directly.
+
+**Also discovered while fixing this**: the real archive's month-folder naming is itself inconsistent — most months are the 3-letter abbreviation (`Jan`, `Feb`, `Mar`, `Apr`, `Aug`, ...) but `June`/`July` have been spelled out in full in more than one year folder (human-created over time, not a bug, just inconsistent). Added `resolve_archive_month_dir(year_dir, month)`: prefers whichever name (abbreviation vs. full) already exists on disk for that year, only falling back to the 3-letter abbreviation — the majority convention — when creating a month folder for the first time. `MONTH_FULL` added alongside the existing `MONTH_ABBR`.
+
+**Data recovery performed on the real share** (2026-07-23, before the year-math fix landed): moved the 4 non-colliding files out of the erroneous `PR&PO\2569\Jul\` into the correct `PR&PO\2026\July\`; the 5th (`PR&QC69074704.pdf`) already had an identical byte-for-byte copy sitting in `2026\July` as `PR&QC69074704 (2).pdf` (same size, same timestamp), so the stray `2569` copy was deleted rather than moved. Deleted the now-empty `PR&PO\2569\` tree entirely. **If any other machine or backup still references `PR&PO\2569\...`, that path no longer exists — everything from it is now under `PR&PO\2026\July\`.**
+
+Verified the fix live (not mocked): ran `archive_pr_po_file()` against a throwaway fake PDF — landed correctly at `PR&PO\2026\Aug\` (today's real date turned out to be 2026-08-05, past the June/July naming quirk entirely, confirming the abbreviation-fallback path works for a brand-new month too). Test artifact removed afterward.
+
 ## Categories built so far
 
 1. **แจ้งเตือนทั่วไป** (General) — free-form To/CC/Subject/Body → Thunderbird.
