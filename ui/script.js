@@ -197,6 +197,29 @@ async function sweepStep3Now() {
   }
 }
 
+// Persistent (no auto-hide) reminder for Outlook drafts opened via the app
+// but not yet confirmed sent — see mail_app.py's "Pending-Outlook-send
+// tracker" for why this exists (a stale unsent draft survived Sleep for
+// weeks and went out with old content). Polls regardless of which page is
+// open since the whole point is catching "about to close the app/sleep the
+// PC" moments.
+async function refreshPendingOutlookSends() {
+  const items = await window.pywebview.api.get_pending_outlook_sends();
+  const banner = document.getElementById("pending-sends-banner");
+  const list = document.getElementById("pending-sends-list");
+  if (!items || !items.length) {
+    banner.style.display = "none";
+    return;
+  }
+  banner.style.display = "block";
+  list.innerHTML = items
+    .map((it) => {
+      const opened = formatDateTimeThai(it.opened_at);
+      return `<div class="pending-sends-item"><b>${escapeHtml(it.subject || "(ไม่มีหัวข้อ)")}</b> — เปิดร่างไว้ตั้งแต่ ${escapeHtml(opened)}</div>`;
+    })
+    .join("");
+}
+
 async function loadAdviceConfig() {
   const config = await window.pywebview.api.get_advice_config();
   document.getElementById("advice-cfg-to").value = config.advice_to || "";
@@ -528,6 +551,7 @@ function sendOutlookLeave() {
     if (result.ok) {
       loadHistory();
       clearImage("outlook-leave");
+      refreshPendingOutlookSends();
     }
   });
 }
@@ -713,6 +737,7 @@ function sendCustom(catId) {
     if (result.ok) {
       loadHistory();
       clearImage(`custom-${catId}`);
+      refreshPendingOutlookSends();
     }
   });
 }
@@ -927,8 +952,10 @@ window.addEventListener("pywebviewready", () => {
   loadStep3Autorename();
   loadAboutInfo();
   loadFgStockStatus();
+  refreshPendingOutlookSends();
   setInterval(refreshAdviceFileInfo, 30000);
   setInterval(loadHistory, 30000);
   setInterval(loadFgStockStatus, 60000);
   setInterval(loadStep3RenameLog, 30000);
+  setInterval(refreshPendingOutlookSends, 10000);
 });

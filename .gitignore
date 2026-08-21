@@ -7,6 +7,7 @@ send_log.json.bak
 scheduled_sends.json
 step3_rename_log.json
 step3_seen.json
+pending_outlook_sends.json
 reply_jobs/
 reply_bridge_host_manifest.json
 run_reply_bridge_host.bat

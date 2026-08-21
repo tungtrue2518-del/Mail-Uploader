@@ -29,6 +29,7 @@ SEND_LOG_FILE = os.path.join(APP_DIR, "send_log.json")
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 STEP3_RENAME_LOG_FILE = os.path.join(APP_DIR, "step3_rename_log.json")
 STEP3_SEEN_FILE = os.path.join(APP_DIR, "step3_seen.json")
+PENDING_OUTLOOK_SENDS_FILE = os.path.join(APP_DIR, "pending_outlook_sends.json")
 
 APP_VERSION = "3.0.0"
 APP_BUILD_DATE = "2026-07-16"
@@ -901,6 +902,95 @@ def try_bridge_action(
         return None
 
 
+# ---------------------------------------------------------------------------
+# Pending-Outlook-send tracker
+# ---------------------------------------------------------------------------
+# Root cause of a real incident (2026-08-21): the app only ever opens an
+# Outlook draft (mail.Display()) and NEVER sends it — the user must click
+# Send in Outlook itself. If they close/sleep the PC before doing that, the
+# unsent compose window just sits there, invisible, surviving sleep cycles
+# indefinitely (Outlook itself never closes on Sleep) until someone
+# eventually stumbles on it and sends it — days or weeks later, with stale
+# content, to the whole distribution list.
+#
+# This tracks every opened Outlook draft in a small JSON file (not just
+# in-memory) so it survives an app restart, and resolves each entry by doing
+# a FRESH Outlook COM scan of Sent Items for a matching Subject — the
+# subject already encodes the date, so an exact-text match is unambiguous
+# enough without needing to reason about COM's timezone-aware SentOn vs our
+# naive local timestamps. Deliberately does NOT hold a live win32com object
+# reference across time/threads — COM objects are apartment-threaded and a
+# background thread touching one created on a different thread without
+# careful marshaling is a real crash risk; a fresh Dispatch() per check
+# sidesteps that entirely (same pattern already used by get_outlook_contacts).
+def _load_pending_outlook_sends() -> list:
+    return load_json_list(PENDING_OUTLOOK_SENDS_FILE)
+
+
+def _save_pending_outlook_sends(items: list) -> None:
+    save_json_list(PENDING_OUTLOOK_SENDS_FILE, items)
+
+
+def add_pending_outlook_send(subject: str, category: str) -> None:
+    with _data_lock:
+        items = _load_pending_outlook_sends()
+        items.append(
+            {
+                "id": uuid.uuid4().hex[:10],
+                "subject": subject,
+                "category": category,
+                "opened_at": datetime.datetime.now().isoformat(timespec="seconds"),
+                "notified_at": None,
+            }
+        )
+        _save_pending_outlook_sends(items)
+
+
+def _outlook_sent_items_has_subject(subject: str, scan_limit: int = 100) -> bool:
+    """Fresh Outlook COM connection; True if Sent Items contains an exact
+    Subject match within the most recent `scan_limit` messages. Never
+    raises — callers must treat an exception (Outlook not running, COM
+    apartment issue) as "can't confirm yet", not "definitely unsent"."""
+    import win32com.client
+
+    outlook = win32com.client.Dispatch("Outlook.Application")
+    ns = outlook.GetNamespace("MAPI")
+    sent = ns.GetDefaultFolder(5)  # olFolderSentMail
+    items = sent.Items
+    items.Sort("[SentOn]", True)
+    checked = 0
+    for it in items:
+        if checked >= scan_limit:
+            break
+        checked += 1
+        try:
+            if (it.Subject or "") == subject:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def resolve_pending_outlook_sends() -> list:
+    """Checks every tracked item against Sent Items; drops the ones
+    confirmed sent. Returns the remaining (still-unsent) entries. Safe to
+    call often — no-ops immediately if nothing is pending, so it doesn't
+    wake/touch Outlook at all when there's nothing to check."""
+    with _data_lock:
+        items = _load_pending_outlook_sends()
+        if not items:
+            return []
+        try:
+            remaining = [it for it in items if not _outlook_sent_items_has_subject(it["subject"])]
+        except Exception:
+            # Outlook COM unavailable right now (e.g. Outlook still starting
+            # up) — don't drop anything, just report the unchanged list.
+            return items
+        if len(remaining) != len(items):
+            _save_pending_outlook_sends(remaining)
+        return remaining
+
+
 def apply_body_keeping_signature(mail, body: str) -> None:
     """Set a new Outlook MailItem's body, adding a signature. Two sources,
     tried in order:
@@ -1229,6 +1319,7 @@ class Api:
                     "status": "opened",
                 }
             )
+            add_pending_outlook_send(subject or "", category_label)
             return {"ok": True, "message": "เปิดฉบับร่างใน Outlook แล้ว กรุณาตรวจสอบก่อนกดส่ง"}
         except Exception as exc:
             return {"ok": False, "message": f"เกิดข้อผิดพลาด: {exc} — ตรวจสอบว่าเปิดโปรแกรม Outlook ไว้แล้ว"}
@@ -1382,6 +1473,9 @@ class Api:
         msg = "สแกนเสร็จแล้ว — " + (", ".join(parts) if parts else f"ชื่อถูกต้องอยู่แล้วทั้งหมด ({summary['already_named']} ไฟล์)")
         return {"ok": True, "message": msg, "summary": summary}
 
+    def get_pending_outlook_sends(self):
+        return resolve_pending_outlook_sends()
+
     def get_advice_config(self):
         return load_config()
 
@@ -1523,9 +1617,15 @@ class Api:
             return {"error": f"ไม่สามารถอ่านสมุดที่อยู่ Outlook ได้: {exc}"}
 
 
+PENDING_SEND_NOTIFY_AFTER_MINUTES = 5
+PENDING_SEND_RENOTIFY_EVERY_MINUTES = 10
+
+
 def run_tray_and_watcher(window, icon_path):
-    """System tray icon (minimize-to-tray) + the step-3 folder auto-rename
-    watcher thread (watch_step3), which runs while the app is open."""
+    """System tray icon (minimize-to-tray) + two watcher threads that run
+    while the app is open: the step-3 folder auto-rename watcher
+    (watch_step3) and the unsent-Outlook-draft nagger (watch_pending_sends,
+    see the "Pending-Outlook-send tracker" block above apply_body_keeping_signature)."""
     import pystray
     from PIL import Image
 
@@ -1638,7 +1738,69 @@ def run_tray_and_watcher(window, icon_path):
                     break
                 threading.Event().wait(1)
 
+    def watch_pending_sends():
+        """Polls every 30s for Outlook drafts that were opened via the app
+        but never confirmed sent. Fires a tray notification once a draft has
+        sat unsent for PENDING_SEND_NOTIFY_AFTER_MINUTES, and repeats every
+        PENDING_SEND_RENOTIFY_EVERY_MINUTES after that, so it keeps nagging
+        instead of a single notification the user can miss.
+        Runs on its own OS thread — COM (Outlook automation) is
+        apartment-threaded, so this thread must CoInitialize itself before
+        touching Outlook; resolve_pending_outlook_sends() creates a fresh
+        win32com Dispatch() per check rather than sharing an object with any
+        other thread, which is what actually makes this safe."""
+        import pythoncom
+
+        pythoncom.CoInitialize()
+        try:
+            while not quitting["flag"]:
+                try:
+                    items = resolve_pending_outlook_sends()
+                    if items:
+                        now = datetime.datetime.now()
+                        dirty = False
+                        for entry in items:
+                            try:
+                                opened_at = datetime.datetime.fromisoformat(entry["opened_at"])
+                            except Exception:
+                                continue
+                            notified_at = entry.get("notified_at")
+                            last_notified = None
+                            if notified_at:
+                                try:
+                                    last_notified = datetime.datetime.fromisoformat(notified_at)
+                                except Exception:
+                                    last_notified = None
+                            should_notify = False
+                            if last_notified is None:
+                                if (now - opened_at).total_seconds() >= PENDING_SEND_NOTIFY_AFTER_MINUTES * 60:
+                                    should_notify = True
+                            elif (now - last_notified).total_seconds() >= PENDING_SEND_RENOTIFY_EVERY_MINUTES * 60:
+                                should_notify = True
+                            if should_notify:
+                                try:
+                                    tray_icon.notify(
+                                        f"{entry.get('subject') or '(ไม่มีหัวข้อ)'} — ยังไม่ได้กด Send ใน Outlook",
+                                        "ยังไม่ได้ส่งอีเมล!",
+                                    )
+                                except Exception:
+                                    pass
+                                entry["notified_at"] = now.isoformat(timespec="seconds")
+                                dirty = True
+                        if dirty:
+                            with _data_lock:
+                                _save_pending_outlook_sends(items)
+                except Exception:
+                    pass
+                for _ in range(30):
+                    if quitting["flag"]:
+                        break
+                    threading.Event().wait(1)
+        finally:
+            pythoncom.CoUninitialize()
+
     threading.Thread(target=watch_step3, daemon=True).start()
+    threading.Thread(target=watch_pending_sends, daemon=True).start()
     tray_icon.run_detached()
     return tray_icon
 
