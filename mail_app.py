@@ -991,6 +991,81 @@ def resolve_pending_outlook_sends() -> list:
         return remaining
 
 
+class OutlookSendGuard:
+    """Outlook Application.ItemSend event sink — a hard stop, not just a
+    notification. If a MailItem being sent (whether the human clicked Send
+    in the UI, or anything else triggered it) matches a Subject this app
+    opened as a draft on an EARLIER calendar day than today, the send is
+    CANCELLED and a warning box is shown. Content in the leave-notice /
+    Standby categories bakes in "today's date" at open-time, so a draft that
+    survived past midnight is guaranteed stale — this is what actually
+    stops the exact 2026-08-21 incident from recurring, rather than just
+    nagging about it.
+
+    Matches purely by exact Subject text against pending_outlook_sends.json
+    — never touches or delays any email this app didn't open (ordinary
+    personal/business mail sent through Outlook is completely unaffected).
+
+    Registered via win32com.client.DispatchWithEvents, which requires a
+    live Windows message pump on the SAME thread that created this object
+    (see watch_pending_sends / run_outlook_send_guard) to actually receive
+    the callback — it will silently never fire without one."""
+
+    def OnItemSend(self, Item, Cancel):
+        try:
+            subject = Item.Subject or ""
+        except Exception:
+            return
+        try:
+            items = _load_pending_outlook_sends()
+        except Exception:
+            return
+        entry = next((it for it in items if it.get("subject") == subject), None)
+        if not entry:
+            return  # not something this app opened — never interfere
+        try:
+            opened_date = datetime.datetime.fromisoformat(entry["opened_at"]).date()
+        except Exception:
+            return
+        if opened_date >= datetime.date.today():
+            return  # opened today (or somehow in the future) — fine, let it send
+        try:
+            Cancel[0] = True
+        except Exception:
+            pass
+        # Belt-and-suspenders: live-tested (2026-08-21) that Cancel=True alone
+        # is NOT reliably permanent — a cancelled item sent via a headless
+        # mail.Send() call (no Display() first) was observed to actually go
+        # out ~10 minutes later, apparently flushed by an unrelated later
+        # Send/Receive cycle. Clearing every recipient means that even if
+        # Outlook resurrects and resends this exact item later, it has
+        # nobody to deliver to — this is the guarantee that actually matters,
+        # independent of whatever Outlook's Cancel-handling quirk turns out
+        # to be.
+        try:
+            Item.To = ""
+            Item.CC = ""
+            Item.BCC = ""
+            Item.Save()
+        except Exception:
+            pass
+        try:
+            import win32api
+
+            win32api.MessageBox(
+                0,
+                "ฉบับร่างนี้เปิดค้างไว้ตั้งแต่วันที่ "
+                f"{opened_date.strftime('%d/%m/%Y')} ซึ่งไม่ใช่วันนี้แล้ว "
+                "เนื้อหา (วันที่ที่อ้างถึง) จะไม่ตรงกับความเป็นจริง\n\n"
+                "ระบบได้ยกเลิกการส่งฉบับนี้ไว้ก่อนแล้ว — กรุณาปิดร่างนี้ทิ้ง (Discard, "
+                "ไม่ใช่ Save) แล้วเปิดฉบับใหม่จากโปรแกรม OverAll Uploader แทนครับ",
+                "ห้ามส่ง — ร่างนี้ข้ามวันไปแล้ว",
+                0x30,  # MB_ICONWARNING
+            )
+        except Exception:
+            pass
+
+
 def apply_body_keeping_signature(mail, body: str) -> None:
     """Set a new Outlook MailItem's body, adding a signature. Two sources,
     tried in order:
@@ -1799,8 +1874,29 @@ def run_tray_and_watcher(window, icon_path):
         finally:
             pythoncom.CoUninitialize()
 
+    def run_outlook_send_guard():
+        """Registers OutlookSendGuard on the ItemSend event and pumps
+        Windows messages so the callback can actually fire — DispatchWithEvents
+        alone does nothing without a live message pump on this same thread.
+        Keeps a reference to `outlook` for the whole thread lifetime; letting
+        it get garbage-collected would silently drop the event sink."""
+        import pythoncom
+        import win32com.client
+
+        pythoncom.CoInitialize()
+        try:
+            outlook = win32com.client.DispatchWithEvents("Outlook.Application", OutlookSendGuard)
+            while not quitting["flag"]:
+                pythoncom.PumpWaitingMessages()
+                threading.Event().wait(0.2)
+        except Exception:
+            pass
+        finally:
+            pythoncom.CoUninitialize()
+
     threading.Thread(target=watch_step3, daemon=True).start()
     threading.Thread(target=watch_pending_sends, daemon=True).start()
+    threading.Thread(target=run_outlook_send_guard, daemon=True).start()
     tray_icon.run_detached()
     return tray_icon
 
